@@ -1,0 +1,13 @@
+{
+  "session_id": "d725e60b-5d84-415e-a849-097b60bc9eeb",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hiiiiiiii"
+    },
+    {
+      "role": "assistant",
+      "content": "[EMOTION:amused]\nHello, it's lovely to see you again, I hope you're having a fantastic Friday morning so far."
+    }
+  ]
+}
