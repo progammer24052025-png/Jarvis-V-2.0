@@ -592,12 +592,7 @@ Typical latencies:
 
 ## Developer
 
-**J.A.R.V.I.S** was developed by **Shreshth Kaushik**, an online educator, businessman, and programmer known for simplifying complex topics with innovative teaching methods.
-
-- **Website:** [theshreshthkaushik.com](https://www.theshreshthkaushik.com/)
-- **Instagram:** [@theshreshthkaushik](https://www.instagram.com/theshreshthkaushik/)
-- **Telegram:** [t.me/theshreshthkaushik](https://t.me/theshreshthkaushik)
-- **YouTube:** [Shreshth Kaushik](https://www.youtube.com/channel/UC7A5u12yVIZaCO_uXnNhc5g)
+**J.A.R.V.I.S** was **re-visioned** by **Rudraksh Patel**, a programmer known for simplifying complex topics with innovative methods.
 - **Jarvis for Everyone:** [jarvis4everyone.com](https://jarvis4everyone.com)
 
 > For the latest version of Jarvis and updates, visit **[Jarvis for Everyone](https://jarvis4everyone.com)**.
