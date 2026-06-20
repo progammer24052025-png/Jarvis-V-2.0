@@ -1,0 +1,121 @@
+--- Page 1 ---
+Page 1 of 2 
+                                Enrollment No:_____________  
+GSFC  UNIVERSITY  
+SCHOOL OF TECHNOLOGY  
+B.Tech. CSE , ATKT End Sem ester Examination , Odd Session 2024 -25 
+Semester:  II             Date:  11/12/2024  
+Course  Code:  BTCS203                   Time: 10:00 a m –12:00 pm 
+Course  Name:  Web Technologies              Total Marks: 40 
+Instructions  
+1. Attempt all questions . 
+2. Figures to the right indicate full marks.  
+3. Make suitable assumptions wherever necessary.  
+ 
+Q.1  (08) 
+a.  Two MCQs / Two fill in the blank question s. Each carry 1 marks.  (02) 
+I. _________ element is used to indicate text quoted from another source.  
+a.  <blockquote>                  c.     <pre>  
+b.  br                                     d.    <marquee>         
+  
+II. Which of the fol lowing attribute adds audio controls, like play, pause, and volume?  
+a. audio   c. source              b. controls     d. src   
+b.  Explain the box -model of CSS with the help of diagram . 
+ (02) 
+c.  What are CSS selectors? Explain each selector with the help of example  (04) 
+   
+Q.2  (08) 
+a.  Two MCQs / Two fill in the blank questions. Each carry 1 marks.  (02) 
+I DOM stands for ___________.  
+a. Document object model                      c.     document oriented memory  
+b.     Document ob ject memor y                  d.     none of these.  
+1. model.  
+  
+II. Which of the following transform property value defines a 2D translation?  
+       a. translate(x,y)    c. translate3d(x,y)  
+b. translate2d(x,y)    d. all of the mentioned   
+b.  What is the scope of the vari ables in JavaScript.  (02) 
+c.  With an example, State the difference between implementing the JavaScript in body and head 
+sections of html code  (04) 
+   
+Q.3  (08) 
+a.  Two MCQs / Two fill in the blank questions . Each car ry 1 marks.  (02) 
+I. The function setcookie () is used to ______.  
+a. Enable or disable cookie support         c.     Store data in cookie variables  
+b. Declare cookie variables                      d.    Clear data from cookie variables  
+  
+II. By default the t able will be displayed with borders.  
+a.   True                       b.   False  
+  
+b.  What is DATE object in JavaScript ? (02) 
+c.  Write the JQuery code to hide the element with id=”myid” , when a user clicks on a button.  (04) 
+ OR  
+a.  Two MCQs / Tw o fill in the blank questions. Each carry 1 marks.  (02) 
+I.  ________ sign is used to define/access jQuery selectors.  
+ 
+  
+II. Which of the following jQuery method is used to hide the selected elements?  
+a.    hidden()               c.       visible(false)  
+              b.    hide()                    d.      display(none)   
+b.  Explain about the methods of getProperty() and setProperty()  (02) 
+c.  Design a JavaScript to display whether given number is prime or not.  (04) 
+   
+   
+
+--- Page 2 ---
+Page 2 of 2 
+ Q.4  (08) 
+a.  Two MCQs / Two fill in the blank questions. Each carry 1 marks.  (02) 
+I. Which of the following is not a valid XML character?  
+ a.      &    b.      <       c.       >         d.      /   
+II. Which of the following is not a valid data type in XML Schema?  
+a.      Boolean                           c.    string  
+b.  Date                                 d.    float  
+  
+b.  Distinguish between DTD and XSD  (02) 
+c.  With an example, explain XML Parser.  (04) 
+ OR  
+a.  Two MCQs / Two fill in the blank questions. Each carry 1 marks.  (02) 
+I. How many types of tags are there in an XML document ?  
+a.       3                                     c.      5  
+b.   4                                     d.      6  
+  
+II. What is an XML parser?  
+ a.      A program that reads and interprets XML documents  
+ b.      A program that creates XML documents  
+ c.      A program that converts XML documents to other formats  
+           d.      A program that validates XML documents   
+b.  Define XML? What are the advantages of XML.  (02) 
+c.  Discuss Bootstrap containers with an example.  (04) 
+   
+Q.5  (08) 
+a.  Two MCQs / Two fill in the blank questions. Each carry 1 marks.  (02) 
+I. Consider the following PHP script:  
+    $x=5;  
+    $y=10;  
+    $c= $y/$x;  
+    echo $c;  
+    $a=”1”;  
+    $b=”1”;  
+    $d= $a.$b;  
+    echo $d;  
+    ?> 
+What would be the output of this script?  
+      a.    21                          c.    251           
+                b.    15                         d.    2  
+II. ________ is used to show the output or give message same as printf in c language  
+a.  echo                                      c.  angular js  
+        b.   java script                             d.  none of these  
+  
+b.  Write the structure of PHP s cript with an example.  (02) 
+c.  Design a PHP program to print reverse of any number  (04) 
+ OR  
+a.  Two MCQs / Two fill in the blank questions. Each carry 1 marks.  (02) 
+I. In PHP, an object must be declared ______.  
+a.   explicitly                             c.     both a and b  
+b.   implicitly                             d.    none of these  
+  
+II. PHP stands for ___________________   
+b.  What is the use of $ symbol in PHP, explain with an example.  (02) 
+c.  Write the code to showcase the concept of class and obje cts in PHP  (04) 
+*********  

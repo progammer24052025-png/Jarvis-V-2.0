@@ -1,0 +1,54 @@
+--- Page 1 ---
+Page 1 of 1 
+                                Enrollment No:_____________  
+GSFC  UNIVERSITY  
+SCHOOL OF TECHNOLOGY   
+B.Tech . Computer Science & Engineering Regular  End Sem Examination  Even  Session 2022 -23 
+Semester:  II              Date:  22/06/2023   
+Subject Code:  BTCS20 3                       Time: 10:00 am – 12:00 pm  
+Subject Name:  Web Technologies               Total Marks: 40 
+Instructions  
+1. Attempt all questions . 
+2. Figures to the right indicate full marks.  
+3. Make suitable assumptions wherever necessary.  
+ 
+Q.1 Fill in the blan ks 
+ (08) 
+a.  By default the table will be displayed with borders. True / False.  (01) 
+b.  “#GSFCU “is an example of _____ selector.  (01) 
+c.  To access an HTML element  by ID , JavaScript  uses the ________ method  of DOM model.  (01) 
+d.  _____model is useful in mani pulating HTML elements at runtime.  (01) 
+e.  ______ web -sites automatically adjust themselves to look good on all devices, from small phones 
+to large desktops.  (01) 
+f.  _____ is used to validate  xml elements.  (01) 
+g.  _____ sign is used to define/access jQuery  selectors . (01) 
+h.  PHP stands for ______.  (01) 
+   Q.2  (08) 
+a.  List the types of CSS and explain anyone with an example.  
+ (04) 
+b.  With an example , State the difference between implementing the JavaS cript in body and head 
+sections o f html code.  (04) 
+ OR  
+a.  Explain the Box model of CSS with an example.  (04) 
+b.  Explain Window.Alert() and Document.Write() with an example.  
+ (04) 
+   
+Q.3  (08) 
+a.  List the syntax rules for creating XML file. Explain the key components of xml with an example.  (04) 
+b.  Write the JQuery C ode to hide the element with id=“myid" When a user clicks on a button.  
+ (04) 
+ OR  
+a.  With an example, explain  XML Parser.  (04) 
+b.  Write the code to showcase the concept of class and Objects in PHP.  (04) 
+   Q.4  (12) 
+a.  Write the code to create an Event re gistration form and perform the Basic and Data validation of 
+the same.  
+ (12) 
+ OR  
+a.  Discuss Bootstrap containers with an example in detail.  (06) 
+b.  With an example,  Explain the concept of File Inclusions in PHP.  (06) 
+   
+Q.5  (04) 
+a.  Discuss the concept of  Search Engine Optimization and its role in digital world.  
+   
+*********  

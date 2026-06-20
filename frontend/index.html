@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="description" content="J.A.R.V.I.S — Just A Rather Very Intelligent System. Your personal AI assistant with voice control, web search, and PC automation.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#050510">
+    <title>J.A.R.V.I.S</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%237c6aef'/%3E%3Cstop offset='100%25' stop-color='%234ecdc4'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='50' cy='50' r='45' fill='url(%23g)'/%3E%3Ctext x='50' y='62' text-anchor='middle' fill='white' font-size='36' font-weight='bold' font-family='sans-serif'%3EJ%3C/text%3E%3C/svg%3E">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=2.2">
+</head>
+<body>
+    <noscript><div style="padding:40px;text-align:center;color:#fff;background:#050510;min-height:100vh;"><h1>J.A.R.V.I.S requires JavaScript</h1><p>Please enable JavaScript in your browser settings to use this application.</p></div></noscript>
+    <div class="app">
+        <div id="orb-container"></div>
+        <header class="header glass-panel">
+            <div class="header-left">
+                <h1 class="logo">J.A.R.V.I.S</h1>
+                <span class="tagline">Just A Rather Very Intelligent System</span>
+            </div>
+            <div class="header-center">
+                <div class="mode-switch mode-switch-three" id="mode-switch">
+                    <div class="mode-slider" id="mode-slider"></div>
+                    <button class="mode-btn active" data-mode="jarvis" id="btn-jarvis" title="Jarvis — brain auto-routes to General or Realtime">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                        <span class="mode-btn-text">Jarvis</span>
+                    </button>
+                    <button class="mode-btn" data-mode="general" id="btn-general" title="General — no web search">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        <span class="mode-btn-text">General</span>
+                    </button>
+                    <button class="mode-btn" data-mode="realtime" id="btn-realtime" title="Realtime — live web search">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        <span class="mode-btn-text">Realtime</span>
+                    </button>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="status-badge" id="status-badge">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Online</span>
+                </div>
+                <button class="btn-icon" id="integrations-btn" title="Integrations (Email, Calendar)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/>
+                    </svg>
+                </button>
+                <button class="btn-icon" id="history-btn" title="Chat history (Ctrl+Shift+H)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                </button>
+                <button class="btn-icon activity-toggle" id="activity-toggle" title="View activity flow">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                </button>
+                <button class="btn-icon search-results-toggle" id="search-results-toggle" title="View search results" style="display: none;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                </button>
+                <button class="btn-icon" id="theme-btn" title="Toggle theme" onclick="toggleTheme()">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                </button>
+                <button class="btn-icon settings-btn" id="settings-btn" title="Settings">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                </button>
+                <button class="btn-icon new-chat-btn" id="new-chat-btn" title="New Chat (Ctrl+N)">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                </button>
+                <button class="btn-icon reminder-btn" id="reminder-btn" title="Reminders">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                    </svg>
+                </button>
+            </div>
+        </header>
+        <aside class="activity-panel glass-panel" id="activity-panel" aria-hidden="true">
+            <div class="activity-header">
+                <h3 class="activity-title">Activity</h3>
+                <button class="activity-close" id="activity-close" title="Close" aria-label="Close activity panel">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="activity-list" id="activity-list">
+                <div class="activity-empty" id="activity-empty">Send a message to see the flow here.</div>
+            </div>
+        </aside>
+        <main class="chat-area" id="chat-area">
+            <div class="chat-messages" id="chat-messages">
+                <div class="welcome-screen" id="welcome-screen">
+                    <div class="welcome-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+                        </svg>
+                    </div>
+                    <h2 class="welcome-title" id="welcome-title">Good evening.</h2>
+                    <p class="welcome-sub">How may I assist you today?</p>
+                    <div class="welcome-chips">
+                        <button class="chip" data-msg="What can you do?">What can you do?</button>
+                        <button class="chip" data-msg="Open YouTube for me">Open YouTube</button>
+                        <button class="chip" data-msg="Tell me a fun fact">Fun fact</button>
+                        <button class="chip" data-msg="Play some music">Play music</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+        <footer class="input-bar glass-panel">
+            <div class="input-wrapper">
+                <button class="action-btn upload-btn" id="upload-btn" title="Upload file to knowledge base">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                </button>
+                <button class="action-btn files-btn" id="files-btn" title="Manage uploaded files">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                    </svg>
+                </button>
+                <textarea id="message-input"
+                          placeholder="Ask Jarvis anything..."
+                          rows="1"
+                          maxlength="32000"></textarea>
+                <div class="input-actions">
+                    <button class="action-btn mic-btn" id="mic-btn" title="Voice input — click to start auto-listen (restarts after each response)">
+                        <svg class="mic-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+                        </svg>
+                        <svg class="mic-icon-active" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="4" y="4" width="16" height="16" rx="3"/>
+                        </svg>
+                    </button>
+                    <button class="action-btn tts-btn" id="tts-btn" title="Text to Speech">
+                        <svg class="tts-icon-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                            <line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>
+                        </svg>
+                        <svg class="tts-icon-on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+                        </svg>
+                    </button>
+                    <button class="action-btn send-btn" id="send-btn" title="Send message">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="input-meta" id="input-meta">
+                <span class="char-count" id="char-count"></span>
+            </div>
+        </footer>
+        <aside class="search-results-widget glass-panel" id="search-results-widget" aria-hidden="true">
+            <div class="search-results-header">
+                <h3 class="search-results-title">Live search</h3>
+                <button class="search-results-close" id="search-results-close" title="Close" aria-label="Close search results">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="search-results-query" id="search-results-query"></div>
+            <div class="search-results-answer" id="search-results-answer"></div>
+            <div class="search-results-list" id="search-results-list"></div>
+        </aside>
+        <div class="settings-panel glass-panel" id="settings-panel" aria-hidden="true">
+            <div class="settings-header">
+                <h3 class="settings-title">Settings</h3>
+                <button class="settings-close btn-icon" id="settings-close" title="Close" aria-label="Close settings">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="settings-body">
+                <div class="settings-item">
+                    <label class="settings-label" for="toggle-auto-activity">Auto-open activity panel</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-auto-activity" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="settings-item">
+                    <label class="settings-label" for="toggle-auto-search">Auto-open search results</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-auto-search" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="settings-item">
+                    <label class="settings-label" for="toggle-thinking-sounds">Thinking sound effects</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-thinking-sounds" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <p class="settings-hint">When enabled, the activity and search panels open automatically when data is available. Thinking sounds play a short cue while the AI processes your message.</p>
+                <div class="settings-divider"></div>
+                <h4 class="settings-section-title">Personalization</h4>
+                <div class="settings-item settings-item-input">
+                    <label class="settings-label" for="setting-user-title">User Title</label>
+                    <input type="text" class="settings-input" id="setting-user-title" placeholder="e.g. Sir, Boss" maxlength="50">
+                </div>
+                <div class="settings-item settings-item-input">
+                    <label class="settings-label" for="setting-tts-voice">TTS Voice</label>
+                    <input type="text" class="settings-input" id="setting-tts-voice" placeholder="e.g. en-GB-RyanNeural" maxlength="100">
+                </div>
+                <div class="settings-item settings-item-input">
+                    <label class="settings-label" for="setting-tts-rate">TTS Speed</label>
+                    <input type="text" class="settings-input" id="setting-tts-rate" placeholder="e.g. +22%" maxlength="20">
+                </div>
+                <button class="settings-save-btn" id="settings-save-btn">Save</button>
+                <p class="settings-hint" id="settings-save-status"></p>
+            </div>
+        </div>
+        <div class="panel-overlay" id="panel-overlay" aria-hidden="true"></div>
+        <div class="speech-widget" id="speech-widget" aria-hidden="true">
+            <div class="speech-widget-inner">
+                <span class="speech-widget-label">Listening...</span>
+                <span class="speech-widget-text" id="speech-widget-text"></span>
+            </div>
+        </div>
+        <div class="toast-container" id="toast-container" aria-live="polite"></div>
+        <!-- Chat History Panel -->
+        <aside class="history-panel glass-panel" id="history-panel" aria-hidden="true">
+            <div class="history-header">
+                <h3 class="history-title">Chat History</h3>
+                <button class="activity-close" id="history-close" title="Close" aria-label="Close history">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+            <div class="history-list" id="history-list">
+                <div class="history-empty">No saved conversations yet.</div>
+            </div>
+        </aside>
+
+        <!-- File Management Modal -->
+        <div class="modal" id="files-modal" aria-hidden="true">
+            <div class="modal-backdrop" id="files-modal-backdrop"></div>
+            <div class="modal-content glass-panel">
+                <div class="modal-header">
+                    <h3>Uploaded Files</h3>
+                    <button class="modal-close" id="files-modal-close">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="files-list" id="files-list">
+                        <div class="files-empty">No files uploaded yet.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reminder Modal -->
+        <div class="modal" id="reminder-modal" aria-hidden="true">
+            <div class="modal-backdrop" id="reminder-modal-backdrop"></div>
+            <div class="modal-content glass-panel">
+                <div class="modal-header">
+                    <h3>Reminders</h3>
+                    <button class="modal-close" id="reminder-modal-close">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="reminder-form">
+                        <input type="text" id="reminder-message" placeholder="Reminder message..." class="reminder-input">
+                        <input type="datetime-local" id="reminder-datetime" class="reminder-input">
+                        <select id="reminder-repeat" class="reminder-input">
+                            <option value="none">No repeat</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                        <select id="reminder-sound" class="reminder-input">
+                            <option value="default">Default Sound</option>
+                            <option value="bell">Bell</option>
+                            <option value="alarm">Alarm</option>
+                            <option value="chime">Chime</option>
+                        </select>
+                        <label class="reminder-checkbox">
+                            <input type="checkbox" id="reminder-speak">
+                            <span>Speak the reminder</span>
+                        </label>
+                        <button class="reminder-create-btn" id="reminder-create-btn">Create Reminder</button>
+                    </div>
+                    <div class="reminders-list" id="reminders-list">
+                        <div class="reminders-empty">No reminders set.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Integrations Modal -->
+        <div class="modal" id="integrations-modal" aria-hidden="true">
+            <div class="modal-backdrop" id="integrations-modal-backdrop"></div>
+            <div class="modal-content glass-panel integrations-modal">
+                <div class="modal-header">
+                    <h3>Integrations</h3>
+                    <button class="modal-close" id="integrations-modal-close">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <!-- Email Section -->
+                    <div class="integration-section">
+                        <div class="integration-header">
+                            <div class="integration-icon">📧</div>
+                            <div class="integration-info">
+                                <h4>Email</h4>
+                                <p id="email-status">Not configured</p>
+                            </div>
+                            <button class="integration-toggle" id="email-config-btn">Configure</button>
+                        </div>
+                        <div class="integration-form" id="email-form" style="display: none;">
+                            <input type="text" id="email-smtp-host" placeholder="SMTP Host (e.g., smtp.gmail.com)" class="integration-input">
+                            <input type="number" id="email-smtp-port" placeholder="Port (e.g., 587)" class="integration-input" value="587">
+                            <input type="email" id="email-username" placeholder="Email address" class="integration-input">
+                            <input type="password" id="email-password" placeholder="App password" class="integration-input">
+                            <input type="email" id="email-from" placeholder="From email (optional)" class="integration-input">
+                            <button class="integration-save-btn" id="email-save-btn">Save Email Config</button>
+                        </div>
+                        <div class="integration-form" id="email-send-form" style="display: none;">
+                            <input type="email" id="email-to" placeholder="To email" class="integration-input">
+                            <input type="text" id="email-subject" placeholder="Subject" class="integration-input">
+                            <textarea id="email-body" placeholder="Email body" class="integration-input" rows="3"></textarea>
+                            <button class="integration-save-btn" id="email-send-btn">Send Email</button>
+                        </div>
+                    </div>
+
+                    <!-- Google Calendar Section -->
+                    <div class="integration-section">
+                        <div class="integration-header">
+                            <div class="integration-icon">📅</div>
+                            <div class="integration-info">
+                                <h4>Google Calendar</h4>
+                                <p id="calendar-status">Not configured</p>
+                            </div>
+                            <button class="integration-toggle" id="calendar-auth-btn">Connect</button>
+                        </div>
+                        <div class="integration-form" id="calendar-form" style="display: none;">
+                            <p class="integration-help">Click "Connect" to authorize JARVIS to access your Google Calendar.</p>
+                            <button class="integration-save-btn" id="calendar-connect-btn">Open Google OAuth</button>
+                        </div>
+                        <div class="integration-form" id="calendar-events-form" style="display: none;">
+                            <div class="calendar-events-list" id="calendar-events-list">
+                                <div class="calendar-empty">Loading events...</div>
+                            </div>
+                            <button class="integration-save-btn" id="calendar-refresh-btn">Refresh</button>
+                        </div>
+                    </div>
+
+                    <!-- Notion Section -->
+                    <div class="integration-section">
+                        <div class="integration-header">
+                            <div class="integration-icon">📓</div>
+                            <div class="integration-info">
+                                <h4>Notion</h4>
+                                <p id="notion-status">Not configured</p>
+                            </div>
+                            <button class="integration-toggle" id="notion-config-btn">Configure</button>
+                        </div>
+                        <div class="integration-form" id="notion-form" style="display: none;">
+                            <input type="password" id="notion-api-key" placeholder="Notion API Key" class="integration-input">
+                            <input type="text" id="notion-database-id" placeholder="Database ID" class="integration-input">
+                            <button class="integration-save-btn" id="notion-save-btn">Save Notion Config</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="orb.js?v=2.2"></script>
+    <script src="script.js?v=2.2"></script>
+</body>
+</html>

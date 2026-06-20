@@ -1,0 +1,554 @@
+--- Page 1 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 1Friend Function 
+
+--- Page 2 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 2I like C++ so much 
+I like Rupesh sir 
+Friend Function ▪In C++ a Friend Function  that is a "friend" of a given class is allowed 
+access to private and protected data in that class. 
+▪A friend function is a function which is declared using friend  keyword. 
+class A
+{
+  private: 
+    int numA;
+  public : 
+   void setA(); 
+    
+ };Class 
+class B
+{
+  private: 
+    int numB;
+   public : 
+    void  setB(); 
+};Class 
+void add() 
+{ 
+} Friend Function 
+Access 
+numA, numB friend void add(); friend void add(); 
+
+--- Page 3 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 3I like C++ so much 
+I like Rupesh sir ▪Friend function  can be declared either in public or private part of the 
+class. 
+▪It is not a member of the class so it cannot be called using the 
+object . 
+▪Usually, it has the objects as arguments . 
+Syntax: 
+class ABC 
+{ 
+   public : 
+     ……………………………………………  
+     friend  void xyz(argument/s); //declaration  
+     ……………………………………………  
+}; 
+
+--- Page 4 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 4I like C++ so much 
+I like Rupesh sir class numbers {  
+  int num1, num2;  
+  public : 
+   void setdata ( int a, int b); 
+   friend  int add(numbers N);  
+}; 
+void numbers :: setdata( int a, int b){ 
+  num1=a;  
+  num2=b;  
+} 
+int add(numbers N){  
+  return  (N.num1+N.num2);  
+} int main()  
+{ 
+  numbers N1;  
+  N1.setdata(10,20);  
+  cout<<”Sum = ”<<add(N1);  
+  return  0; 
+} 
+
+--- Page 5 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 5
+class Box { 
+   double  width; 
+public : 
+   friend  void printWidth( Box ); 
+   void setWidth( double  wid ); 
+}; 
+void Box::setWidth( double  wid ) { 
+   width = wid; 
+} 
+void printWidth(Box b) { 
+  cout << "Width of box : "  << b.width; 
+}
+int main( ) { 
+Box box; 
+box.setWidth(10.0); 
+printWidth( box ); 
+return  0; 
+}
+
+--- Page 6 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 6
+class  base 
+{ 
+    int val1,val2; 
+   public : 
+    void get(){ 
+       cout<< "Enter two values:" ; 
+       cin>>val1>>val2; 
+    } 
+    friend  float mean(base ob); 
+}; 
+float mean(base ob){ 
+   return  float(ob.val1+ob.val2)/2; 
+} 
+int main(){ 
+    base obj; 
+    obj.get(); 
+    cout<< "\n Mean value is : " <<mean(obj); 
+} 
+
+--- Page 7 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 7I like C++ so much 
+I like Rupesh sir 
+class A
+{
+  private: 
+    int numA;
+  public : 
+   void setA(); 
+    
+ };Class 
+class B
+{
+  private: 
+    int numB;
+   public : 
+    void  setB(); 
+};Class 
+void add() 
+{ 
+} Friend Function 
+Access 
+numA, numB friend void add(); friend void add(); 
+
+--- Page 8 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 8I like C++ so much 
+I like Rupesh sir 
+Program: Friend function to another class 
+▪Write a program to find out sum of two private data members numA  
+and numB  of two classes ABC and XYZ using a common friend 
+function. Assume that the prototype for both the classes will be int 
+add(ABC, XYZ); 
+
+--- Page 9 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 9
+class XYZ; //forward declaration 
+class ABC { 
+ private : 
+  int numA; 
+ public : 
+  void setdata(){ 
+   numA=10; 
+  } 
+ friend  int add(ABC, XYZ); 
+};
+Class XYZ { 
+ private : 
+  int numB; 
+ public : 
+  void setdata(){ 
+    numB=25; 
+  } 
+ friend  int add(ABC , XYZ); 
+}; 
+int add(ABC objA, XYZ objB){ 
+  return  (objA.numA + objB.numB); 
+} 
+int main(){ 
+  ABC objA;   XYZ objB; 
+  objA.setdata();  objB.setdata(); 
+  cout<< "Sum: " << add(objA, objB); 
+} 
+
+--- Page 10 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 10
+class Square;  // forward declaration 
+class Rectangle  
+{ 
+   int width=5, height=6; 
+   public : 
+     friend  void display(Rectangle , Square ); 
+}; 
+class Square  
+{ 
+   int side=9; 
+   public : 
+     friend  void display(Rectangle , Square ); 
+}; 
+void display(Rectangle r, Square s)  
+{ 
+   cout<< "Rectangle:" << r.width * r.height; 
+   cout<< "Square:" << s.side * s.side; 
+} 
+
+--- Page 11 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 11
+int main () { 
+  Rectangle rec; 
+  Square sq; 
+  display(rec,sq); 
+  return  0; 
+} 
+
+--- Page 12 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 12Constructors 
+
+--- Page 13 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 13I like C++ so much 
+I like Rupesh sir In C++, a constructor  is a special member function of a 
+class that is automatically called whenever an object of the 
+class is created. The primary role of a constructor is to 
+initialize the object 
+1. similar to member function 
+2. has same name as class name 
+3. called automatically when object of class created 
+4. A constructor is used to initialize the objects of class as 
+soon as the object is created. 
+
+
+--- Page 14 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 14I like C++ so much 
+I like Rupesh sir 
+int main() 
+{
+} class car
+{
+  private: 
+    float  mileage; 
+  public : 
+    void  setdata() 
+    { 
+       cin>>mileage; 
+    }
+};
+car c1; 
+c1.setdata(); car c1,c2; 
+c2.setdata(); class car
+{
+  private: 
+    float  mileage; 
+  public : 
+};car() 
+{ 
+   cin>>mileage; 
+}
+int main() 
+{
+} car c1; car c1,c2; Similar to 
+member 
+function Same 
+name as 
+class name 
+Called 
+automatically 
+on creation 
+of object 
+
+--- Page 15 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 15I like C++ so much 
+I like Rupesh sir                        
+Properties of Constructor 
+▪Constructor  should be declared in public 
+section because private constructor cannot be 
+invoked outside the class so they are useless. 
+▪Constructors do not have return types and 
+they cannot return values, not even void. 
+▪Constructors cannot be inherited, even though a derived class can call 
+the base class constructor. 
+▪Constructors cannot be virtual. class car
+{
+  private: 
+    float  mileage; 
+  public : 
+    car() 
+    { 
+     cin>>mileage; 
+    } 
+};
+
+--- Page 16 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 16I like C++ so much 
+I like Rupesh sir 
+class Rectangle 
+{ 
+ int width,height; 
+ public : 
+ Rectangle(){ 
+   width=5; 
+   height=6; 
+   cout<<”Constructor Called”; 
+ } 
+}; 
+int main() 
+{ 
+  Rectangle r1; 
+  return  0; 
+}
+
+--- Page 17 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 17Types of Constructors 
+
+--- Page 18 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 18I like C++ so much 
+I like Rupesh sir 
+Types of Constructors 
+1)Default constructor 
+2)Parameterized constructor 
+3)Copy constructor 
+
+--- Page 19 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 19I like C++ so much 
+I like Rupesh sir 1)              
+   
+Default Constructor 
+▪Default constructor  is the one which invokes by default when object 
+of the class is created. 
+▪It is generally used to initialize the default value of the data members. 
+▪It is also called no argument constructor .
+Object d1 
+10 10 m n class demo{ 
+  int m,n; 
+ public:
+  demo() 
+  {
+    m=n=10; 
+  }
+};int main() 
+{
+  demo d1; 
+}
+
+--- Page 20 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 20I like C++ so much 
+I like Rupesh sir class Area 
+{ 
+  private : 
+   int length, breadth; 
+  public : 
+   Area(){ 
+   length=5; 
+   breadth=2; 
+   } 
+   void Calculate(){   
+    cout<< "\narea=" <<length * breadth;   
+   } 
+};int main(){ 
+ Area A1; 
+ A1.Calculate(); 
+ Area A2; 
+ A2.Calculate(); 
+ return  0; 
+} 
+A1 
+5 2 length breadth A2 
+5 2 length breadth 
+
+--- Page 21 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 21I like C++ so much 
+I like Rupesh sir 
+Parameterized Constructor 
+▪Constructors that can take arguments are called parameterized 
+constructors .
+▪Sometimes it is necessary to initialize the various data elements of 
+different objects with different values when they are created. 
+▪We can achieve this objective by passing arguments to the constructor 
+function when the objects are created. 
+
+
+--- Page 22 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 22I like C++ so much 
+I like Rupesh sir Constructors that can take arguments are called parameterized 
+constructors .
+class demo 
+{
+   int m,n; 
+   public :
+   demo( int x,int y){ //Parameterized Constructor 
+     m=x; 
+     n=y; 
+     cout<<“Constructor Called“; 
+   }
+};
+int main() 
+{
+  demo d1(5,6); 
+}
+Parameterized Constructor 
+d1 
+5 6 m n 
+
+--- Page 23 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 23I like C++ so much 
+I like Rupesh sir 
+Program Parameterized Constructor 
+▪Create a class Distance  having data members feet and inch. Create 
+parameterized constructor to initialize members feet and inch. 
+
+--- Page 24 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 24I like C++ so much 
+I like Rupesh sir 
+Copy Constructor 
+▪A copy constructor is used to declare and initialize an object 
+from another object using an object as argument. 
+▪For example: 
+   demo(demo &d);  //declaration 
+        demo d2(d1);      //copy object 
+OR   demo d2=d1;               //copy object 
+▪Constructor which accepts a reference to its own class as a 
+parameter is called copy constructor .
+
+--- Page 25 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 25I like C++ so much 
+I like Rupesh sir ▪A copy constructor is used to initialize an objec from another 
+object using an object as argument. 
+▪A Parameterized constructor which accepts a reference to its 
+own class as a parameter is called copy constructor .
+
+--- Page 26 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 26I like C++ so much 
+I like Rupesh sir class demo 
+{
+   int m, n; 
+   public :
+   demo( int x,int y){
+    m=x; 
+    n=y; 
+    cout<< "Parameterized Constructor" ;
+   }
+   demo(demo &x){ 
+    m = x.m; 
+    n = x.n; 
+    cout<< "Copy Constructor" ;  
+   } 
+};int main() 
+{ 
+   demo obj1(5,6); 
+   demo obj2(obj1); 
+   demo obj2 = obj1;  
+} 
+5 6 m n obj1 
+5 6 m n obj2 obj1 or x 
+
+--- Page 27 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 27I like C++ so much 
+I like Rupesh sir ▪Create a class Rectangle having data members length and 
+width . Demonstrate default, parameterized and copy 
+constructor to initialize members. 
+
+--- Page 28 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 28
+class rectangle{ 
+   int length, width; 
+   public : 
+   rectangle(){ // Default constructor 
+     length=0; 
+     width=0; 
+   } 
+   rectangle( int x, int y){// Parameterized           constructor 
+     length = x; 
+     width = y; 
+   } 
+   rectangle(rectangle &_r){ // Copy constructor 
+     length = _r.length; 
+     width = _r.width;  
+   } 
+};This is constructor 
+overloading 
+
+--- Page 29 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 29int main() 
+{ 
+  rectangle r1; // Invokes default constructor 
+  rectangle r2(10,20); // Invokes parameterized constructor 
+  rectangle r3(r2); // Invokes copy constructor 
+}
+
+--- Page 30 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 30Destructor 
+
+--- Page 31 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 31
+Destructor 
+•Destructor  is used to destroy the objects that 
+have been created by a constructor. 
+•The syntax for destructor  is same as that for 
+the constructor, 
+•the class name is used for the name of  
+destructor, 
+•with a tilde (~)  sign as prefix to it. class car
+{
+    float  mileage; 
+  public : 
+   car(){ 
+     cin>>mileage; 
+   } 
+   ~car(){   
+cout<<" destructor"; 
+   } 
+  
+};
+
+--- Page 32 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 32Destructor  
+▪never takes any argument nor it returns any value nor it has return 
+type. 
+▪is invoked automatically by the complier upon exit from the 
+program. 
+▪should be declared in the public section. 
+
+--- Page 33 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 33I like C++ so much 
+I like Rupesh sir 
+class rectangle  
+{ 
+  int length, width;      
+  public : 
+  rectangle(){ //Constructor  
+   length=0;  
+   width=0; 
+   cout<<”Constructor Called”;  
+  } 
+  ~rectangle() //Destructor  
+  { 
+   cout<<”Destructor Called”; 
+  } 
+// other functions for reading, writing and processing can be written here  
+}; int main() 
+{ 
+   rectangle x;  
+// default constructor is called 
+}
+
+--- Page 34 ---
+3/31/2025 Ms. Neeshu Chaudhary, CSE dept 34I like C++ so much 
+I like Rupesh sir class Marks{ 
+public : 
+   int maths; 
+   int science; 
+   //constructor 
+   Marks() { 
+      cout << "Inside Constructor" <<endl; 
+      cout << "C++ Object created" <<endl; 
+   } 
+  //Destructor 
+   ~Marks() { 
+      cout << "Inside Destructor" <<endl; 
+      cout << "C++ Object destructed" <<endl; 
+   } 
+};int main( ) 
+{ 
+   Marks m1; 
+   Marks m2; 
+   return  0; 
+}

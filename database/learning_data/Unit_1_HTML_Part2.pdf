@@ -1,0 +1,144 @@
+--- Page 1 ---
+28-01-2025 Yoothika Patel, CSE Dept 
+1
+Outline 
+•Form Attribute 
+•File Path 
+•Types of file path 
+•Iframe 
+•Class and id 
+
+
+--- Page 2 ---
+28-01-2025 Yoothika Patel, CSE Dept 
+2Lecture Structure 
+Recap of Previous Lecture 05 Minutes 
+Delivery of Actual Content as per Lesson Plan 30 Minutes Outline & Objectives 05 Minutes 
+Importance of Discipline 02 Minutes Industry Relevance 05 Minutes 
+Interactive Activities 10 Minutes 
+Recording of Attendance 03 Minutes 
+
+
+--- Page 3 ---
+28-01-2025 Yoothika Patel, CSE Dept 
+3
+Form Attribute 
+•Name
+•Value
+•Required 
+•autofocus 
+•Placeholder 
+•Disables 
+•Size
+•form
+
+--- Page 4 ---
+28-01-2025 Yoothika Patel, CSE Dept 
+4
+
+
+--- Page 5 ---
+28-01-2025 Yoothika Patel, CSE Dept 
+5Header : It is used to define a header for a document or a section 
+Nav:  It is used to define a container for a  navigation link 
+Section : It is used to define section in a document 
+Article : It is  used to define an independent self-contained article 
+Aside : It is used to define content aside from the content 
+Footer : It is used to define a footer for a document or a section 
+
+
+--- Page 6 ---
+28-01-2025 Yoothika Patel, CSE Dept 
+6
+File Path 
+•An HTML File Path is used to describe the location of a file in a website 
+folder.
+•It is use to link  image file, CSS file, Js file ,video etc.. 
+•Attribute: Src
+•Ex:
+<img src=‘1.jpg’> 
+<img src=“images/1.jpg”> 
+<img src=“../1.jpg”> 
+
+--- Page 7 ---
+28-01-2025 Yoothika Patel, CSE Dept 
+7
+Types of File Path 
+•Absolute File Path 
+Absolute file Path specifies full URL address. 
+<img src=“ url of image”> 
+•Relative File Path 
+ <img src=“1.jpg”> 
+
+
+--- Page 8 ---
+28-01-2025 Yoothika Patel, CSE Dept 
+8
+Types of IFrame 
+HTML iframe is used to display a nested webpage (a webpage within 
+webpage). Used to embed webpage or a YouTube video. 
+<iframe src=“URL”></iframe> 
+Attributes: 
+Src
+width
+height
+frameborder 
+allowfullscreen 
+
+--- Page 9 ---
+28-01-2025 Yoothika Patel, CSE Dept 
+9
+Classes and id 
+The HTML class attribute is used to specify a class for an HTML elements 
+Multiple HTML elements can share same class. 
+The class attribute is often used to point a class name in a style sheet. 
+To create a class; write a period (.) character, followed by a class name. Then, 
+define the CSS properties within curly braces {}: 
+The HTML id attribute is used to specify a unique . 
+You cannot have more than one element with the same id in an HTML 
+document 
+The syntax for id is: write a hash character (#), followed by an id name. Then, 
+define the CSS properties within curly braces {}. 
+
+--- Page 10 ---
+28-01-2025 Yoothika Patel, CSE Dept 
+10
+Audio and Video 
+HTML audio tag is used to define sounds such as music and other  audio clips 
+Currently there three supported file format for HTML audio tag. 
+Mp3
+Wav
+Ogg
+HTML5 supports <video> and <audio> controls 
+<audio controls> 
+<source src=“” type=“audio/mpeg”> 
+</audio> 
+
+--- Page 11 ---
+28-01-2025 Yoothika Patel, CSE Dept 
+11
+Think-Pair-Share 
+Think on different tags available in 
+HTML and share to all 
+
+--- Page 12 ---
+28-01-2025 Yoothika Patel, CSE Dept 
+1212
+Title of the Presentation 
+GSFCU & Values 
+Reference: Please write / cite the references used (If any) for this slide (Font: Verdana, Size: 09, Color: Black) In every lecture, Faculty may talk on any of the following: 
+•DCS & GSFCU Portal: Remind students to use DCS, talk about it’s features and instruct all to visit GSFCU website 
+•Discipline, Values and Ethics . 
+•GSFC University – My University: Emphasize the importance of taking ownership of the University. 
+•Respect & Courtesy: Remind students to be respectful to peers, teachers, and staff. Encourage polite language and behavior. 
+•Punctuality:  Emphasize the importance of arriving on time to class and completing assignments by deadlines. 
+•Classroom Rules: Reinforce basic classroom rules, such as keeping mobile phones on silent and maintaining a clean environment. 
+•Safety: Remind students about safety protocols, whether it's physical safety in the classroom or digital safety when using online resources. 
+•Positive Attitude: Encourage a positive mindset, cooperation and supporting one another. 
+Any other thoughts related to Discipline, Values, Ethics etc. can be mentioned during these 2 minutes. You May use 
+appropriate image / video with proper reference. One example is given in next slide. 
+
+--- Page 13 ---
+28-01-2025 Yoothika Patel, CSE Dept 
+1328-01-2025 13GSFCU & Values 
+Respect & Courtesy 

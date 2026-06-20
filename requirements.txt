@@ -1,0 +1,49 @@
+# Web framework & server
+fastapi>=0.100.0,<1.0
+uvicorn[standard]>=0.22.0
+
+# LangChain (LLM orchestration)
+langchain>=0.3.0
+langchain-groq>=0.2.0
+langchain-community>=0.3.0
+langchain-core>=0.3.0
+langchain-huggingface>=0.1.0
+langchain-text-splitters>=0.2.0
+
+# Embeddings & vector store
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.0
+
+# Config & validation
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+
+# ML (for embeddings — CPU-only torch to save ~1.5GB)
+numpy>=1.24.0
+torch>=2.0.0
+transformers>=4.30.0
+
+# HTTP & utilities
+requests>=2.28.0
+rich>=13.0.0
+
+# Web search (Realtime mode)
+tavily-python>=0.5.0
+
+# Text-to-speech (no API key)
+edge-tts>=6.1.0
+
+# PC automation (system info, process control)
+psutil>=5.9.0
+
+# Screenshots (optional — fallback to Snipping Tool if missing)
+mss>=9.0.0
+
+# File processing (optional — for file upload feature)
+python-multipart>=0.0.6
+
+# Document text extraction (PDF, PPTX, DOCX)
+PyPDF2>=3.0.0
+python-pptx>=0.6.21
+python-docx>=1.0.0
+

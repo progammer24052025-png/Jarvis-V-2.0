@@ -1,0 +1,321 @@
+--- Page 1 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+1JQUERY 
+Mukti Patel 
+Department of Computer Science & Engineering 
+
+--- Page 2 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+2Outline 
+1.Introduction 
+2.Why jQuery Required 
+3.Application of jQuery 
+4.Selector 
+
+--- Page 3 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+3Lecture Structure 
+Recap of Previous Lecture 05 
+Minutes 
+Delivery of Actual Content as per 
+Lesson Plan 30 
+Minutes Outline & Objectives 05 
+Minutes 
+Importance of Discipline 02 
+Minutes Industry Relevance 05 
+Minutes 
+Interactive Activities 10 
+Minutes 
+Recording of Attendance 03 
+Minutes 
+Reference: Office Order No. Provost/092023135, Date: 18th September 2023 
+
+--- Page 4 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+4Introduction to JQuery 
+▪The Purpose of JQuery is to make it easier to use 
+JavaScript on your website. 
+▪JQuery is a JavaScript library. 
+▪JQuery Greatly Simplifies JavaScript Programming. 
+▪JQuery is easy to learn. 
+▪JQuery is lightweight open source “write less,do 
+more” Javascript on your website. 
+▪JQuery simplifies the interaction between HTML/CSS 
+page and JavaScript.  
+▪Jquery is Developed by Google 
+
+--- Page 5 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+5Why jQuery Required 
+▪It is fast and extensive. 
+▪It facilitates the users to write UI related 
+function code in minimum possible lines 
+▪It improves the performance of an application 
+▪Browser’s compatible web application can be 
+developed 
+▪It uses mostly new feature of new browser 
+Important: 
+There are several ways to start using jQuery on 
+your web site. You can: 
+•Download the jQuery library from jQuery.com 
+•Include jQuery from a CDN, like Google 
+
+
+--- Page 6 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+6Application of jQuery 
+▪HTML Manipulation 
+▪DOM Manipulation 
+▪DOM element selection 
+▪CSS Manipulation 
+▪Effect and Animations 
+▪AJAX 
+▪HTML event methods 
+
+--- Page 7 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+7Syntax of JQuery 
+The JQuery syntax is based on selecting HTML elements and 
+performing some action on that elements. 
+▪Basic Syntax: 
+•$(selector).action() 
+•$-  It is shortcut for JQuery 
+•Selector-It is any HTML element in DOM 
+•Action-IT is action performed on that element. 
+Example: 
+$(“button”).click() 
+$(“p”),hide() 
+$(“h2”).fadeOut() 
+
+--- Page 8 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+8Example 
+$(this).hide() - hides the current element. 
+$("p").hide() - hides all <p> elements. 
+$(".test").hide() - hides all elements with 
+class="test". 
+$("#test").hide() - hides the element with id="test". 
+
+
+--- Page 9 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+9The Document Ready Event 
+▪$(document).ready( function (){
+  // jQuery methods go here... 
+});
+▪This is to prevent any jQuery code from running 
+before the document is finished loading (is ready). 
+▪It is good practice to wait for the document to be 
+fully loaded and ready before working with it. This 
+also allows you to have your JavaScript code before 
+the body of your document, in the head section. 
+
+
+--- Page 10 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+10JQuery Selector 
+▪JQuery selectors are used to select or find an HTML 
+element ,that allow to manipulate HTML element. 
+▪Element can be selected based on 
+•ID
+•Class 
+•Element 
+•Attributes 
+•Value of Attribute and Many more.. 
+
+--- Page 11 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+11#Id Selector 
+▪jQuery id selector use id attribute  of an HTML tag to select an 
+element 
+▪# symbol followed by element id used to find an element. 
+▪Element id should be unique to find an unique element. 
+▪Id selector use document.getElementByID() method behind the 
+scene. 
+▪If more than one id is present with same name than only first 
+occurring will be consider. 
+•$(“#para1”).hide() 
+•$(“#heading1”).fadeout() 
+
+--- Page 12 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+12Class Selector 
+▪JQuery class selector use class attribute of an HTML 
+tag to select an element. 
+▪.(period) symbol followed by class name is used to 
+find an element 
+▪Element class should be unique to find unique 
+element 
+▪Class selector use 
+•document.getElementByClassName() method behind the 
+scene. 
+Example: 
+$(“.div1”).hide() 
+
+
+--- Page 13 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+13Some Other Selector 
+▪$(“*”)- Select all the elements 
+▪$(“this”)-Select Current Element 
+▪$(“p.para1”)-Select all the ‘p’ element with ‘para1’ 
+▪$(“p.first”)-Select all  the first ‘p’ element. 
+▪Element Selector 
+▪jQuery Element selector element based on the 
+element name. 
+▪Example: 
+•$(“p”)-Select all ‘p’ elements on the page 
+•$(“button”)- Select all button on the page 
+
+
+--- Page 14 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+14
+
+
+--- Page 15 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+15Manipulating Page  Content 
+•append() - Inserts content at the end of the selected 
+elements 
+•prepend() - Inserts content at the beginning of the 
+selected elements 
+•after() - Inserts content after the selected elements 
+•before() - Inserts content before the selected elements 
+
+
+--- Page 16 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+16jQuery Events 
+We can build dynamic web pages using events. 
+Event is a function that can be identified by your web application. 
+Following are the examples of events − 
+• A mouse click 
+• A web page loading 
+• Taking mouse over an element 
+• Submitting an HTML form 
+• A keystroke on your keyboard, etc. 
+When these events are triggered, you can use a custom function 
+to do whatever you want with this event. 
+Its called a custom function event handler. 
+
+--- Page 17 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+17jQuery Syntax for Event Methods 
+▪jQuery offers convenience methods for most native browser 
+events. 
+▪These methods — including .click(), .focus(), .blur(), .change(), 
+
+
+--- Page 18 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+18Regularly Used jQuery Event Function 
+1. $(document).ready() 
+• The $(document).ready() function enable us to execute a function when the 
+document is fully loaded. 
+2. click() 
+• The click() method attaches an event handler function to an HTML element. 
+• The function is executed when the user clicks on the HTML element. 
+
+--- Page 19 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+19Regularly Used jQuery Event Function 
+▪The following are cross platform and recommended 
+event types which you can bind using jQuery 
+Sr.N
+o.Event Type & Description 
+1blur Occurs when the element loses focus. 
+2change Occurs when the element changes. 
+3click Occurs when a mouse click. 
+4dblclick Occurs when a mouse double-click. 
+5error Occurs when there is an error in loading or unloading etc. 
+6focus Occurs when the element gets focus. 
+
+--- Page 20 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+20jQuery Animations 
+The jQuery animate()  method is used to create custom 
+animations. 
+ 
+The required params parameter defines the CSS 
+properties to be animated. 
+The optional speed parameter specifies the duration of 
+the effect. 
+It can take the following values: "slow", "fast", or 
+milliseconds. 
+The optional callback parameter is a function to be 
+executed after the animation completes. 
+
+
+--- Page 21 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+21Interactive Section 
+Make Minimum 5 questions by 
+yourself and ask to other 
+
+--- Page 22 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+22▪In every lecture, Faculty may talk on any of the following: 
+•DCS & GSFCU Portal: Remind students to use DCS, talk about it’s features and instruct all to visit GSFCU website 
+•Discipline, Values and Ethics .
+•GSFC University – My University: Emphasize the importance of taking ownership of the University. 
+•Respect & Courtesy: Remind students to be respectful to peers, teachers, and staff. Encourage polite language 
+and behavior. 
+•Punctuality:  Emphasize the importance of arriving on time to class and completing assignments by deadlines. 
+•Classroom Rules: Reinforce basic classroom rules, such as keeping mobile phones on silent and maintaining a 
+clean environment. 
+•Safety: Remind students about safety protocols, whether it's physical safety in the classroom or digital safety 
+when using online resources. 
+•Positive Attitude: Encourage a positive mindset, cooperation and supporting one another. 
+b
+
+--- Page 23 ---
+09-03-2025 
+Mukti Patel, Dept. of Computer Sc. & 
+Engineering 
+23GSFCU & Values 
+Respect & Courtesy 

@@ -1,0 +1,96 @@
+--- Page 1 ---
+Page 1 of 2 
+                                Enrollment No:_____________  
+GSFC  UNIVERSITY  
+SCHOOL OF TECHNOLOGY   
+B.Tech. CSE, End Semester ATKT Examination, Even Session 2024 -25 
+Semester : II             Date:  21/06/2025  
+Course  Code : BTCS203                                       Time: 10:00  AM to 12:00 PM  
+Course  Name:  Web Technologies                                                                     Total  Marks: 40 
+Instructions  
+1. Attempt all questions . 
+2. Figures to the right indicate full marks.  
+3. Make suitable assumpti ons wherever nece ssary.  
+ 
+Q.1  (08) 
+a.  Two MCQs / Two fill in the blank question s. Each carry 1 marks.  (02) 
+I. Which tag is used to create a hyperlink in HTML?  
+a) <link>            b) <a>          c)  <href>           d)  <url>   
+II. Which CSS property is us ed to change the text color of an element?  
+a) font-color             b ) text-color          c) color          d ) foreground -color   
+b.  What is the difference between <ul>, <ol>, and <li> tags?  (02) 
+c.  Explain internal, external, and i nline CSS with examples.  (04) 
+   
+Q.2  (08) 
+a.  Two MCQs / Two fill in the blank questions. Each carry 1 marks.  (02) 
+I Which keyword is used to declare a variable in JavaScript?  
+a) var          b) let          c) const          d) All of the above   
+II. Which method is used to dis play data in the browser console?  
+a) alert()           b) prompt()           c) console.show()            d) console.log()   
+b.  How do you create an object in JavaScript? Give an example.  (02) 
+c.  What are JavaScript events? Write two examples of common events.  (04) 
+   
+Q.3  (08) 
+a.  Two MCQs / Two fill in the blank questions. Each carry 1 marks.  (02) 
+I. Which method is used to hide an element in jQuery?  
+a) hide()            b) visible(false)          c) remove()          d) invisible()   
+II. Which method is used to run code when the document is ready in jQuery?  
+a) $(document).start()                         b) $(document).ready()  
+c) $(window).load()                            d) $(document).init()   
+b.  What is jQuery? Mention two advantage of using it.  (02) 
+c.  How do y ou add and remove CSS classes from elements using jQuery? Give code examples.  (04) 
+ OR  
+a.  Two MCQs / Two fill in the blank questions. Each c arry 1 marks.  (02) 
+I. What does the .fadeOut() method do in jQuery?  
+a) Shows an element gradually                  b) Hides an element gradually  
+c) Removes an element instantly               d) Changes the element color   
+II. What is the jQuery method to remove an element from the DOM?  
+a) detach()           b) remove()           c) delete()            d) erase()   
+b.  Write a  Program to show Click event using JQuery.  (02) 
+c.  Develop a jQuery script to change the background color of a div gradually using th e .fadeTo() 
+animation method.  (04) 
+   
+   
+   
+
+--- Page 2 ---
+Page 2 of 2 
+ Q.4  (08) 
+a.  Two MCQs / Two fill in the blank questions. Each carry 1 marks.  (02) 
+I. What is the correct way to declare an XML version?  
+a) <?xml version="1.0"?>                 b) <!xml version="1.0">  
+c) <xml version="1.0"/>                   d ) <?xml:version="1.0"?>   
+II. Which of the following is used to validate an XML document ? 
+a) CSS          b ) HTML          c ) DTD or XML Schema          d ) JSON   
+b.  Describe any two adva ntages of using XML.  (02) 
+c.  Write a simple XML document to store student information (name, roll number, and course).  (04) 
+ OR  
+a.  Two MCQs / Two fill in the b lank questions. Each carry 1 marks.  (02) 
+I. What is the default grid system in Bootstrap based on?  
+a) 6 columns          b ) 12 columns          c ) 10 columns          d ) 8 columns   
+II. What is Bootstrap?  
+a. A JavaScript library           b. A CSS framewor k 
+c. A database system             d. A text editor   
+b.  Write a feature of Bootstrap?  (02) 
+c.  Discuss Bootstrap containers with an example.  (04) 
+   
+Q.5  (08) 
+a.  Two MCQs / Two fill in the blank questions. Each carry 1 marks.  (02) 
+I. Which symbol is used to declare a variable in PHP?  
+a) %           b ) @          c) $          d ) &  
+II. Which superglobal variable is used to collect form data sent via POST?  
+a) $_POST           b) $_GET           c) $_FORM           d) $_DATA   
+b.  Explain the difference between GET and POST methods in PHP forms.  (02) 
+c.  Write  a PHP script to check if a number is even or odd.  (04) 
+ OR  
+a.  Two MCQs / Two fill in the blank questions. Each carry 1 marks.  (02) 
+I. Which keyword is used to define a function in PHP?  
+a) define           b) function           c) method           d) fun  
+II. Which operator is used for concatenation in PHP?  
+a) +          b) &          c) .          d) *  
+b.  How do you create an associative array in PHP? Give an example . (02) 
+c.  What are PHP sessions? Write a code sni ppet to start a session and store a username.  (04) 
+ 
+*********  
+ 
+ 

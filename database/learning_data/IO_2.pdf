@@ -1,0 +1,410 @@
+--- Page 1 ---
+ 
+1. Write to a File  
+Creates a file and writes content into it.  
+#include <stdio.h>  
+ 
+int main() {  
+    FILE *fp;  
+    fp = fopen("file.txt", "w");  
+ 
+    fprintf(fp, "Hello, this is file writing example. \n"); 
+ 
+    fclose(fp);  
+    return 0;  
+} 
+ 
+2. Read from a File  
+Reads content from an existing file.  
+#include <stdio.h>  
+ 
+int main() {  
+    FILE *fp;  
+    char ch;  
+ 
+    fp = fopen("file.txt", "r");  
+ 
+    while ((ch = fgetc(fp)) != EOF) {  
+        printf("%c", ch);  
+    } 
+ 
+    fclose(fp);  
+    return 0;  
+} 
+ 
+3. Append to a File  
+Adds content at the end of the file.  
+#include <stdio.h>  
+ 
+int main() {  
+    FILE *fp;  
+ 
+    fp = fopen("file.txt", "a");  
+ 
+    fprintf(fp, "This line is appended. \n"); 
+
+--- Page 2 ---
+ 
+    fclose(fp);  
+    return 0;  
+} 
+ 
+4. Copy Content from One File to Another  
+#include <stdio.h>  
+ 
+int main() {  
+    FILE *fp1, *fp2;  
+    char ch;  
+ 
+    fp1 = fopen("file.txt", "r");  
+    fp2 = fopen("copy.txt", "w");  
+ 
+    while ((ch = fgetc(fp1)) != EOF) {  
+        fputc(ch, fp2);  
+    } 
+ 
+    fclose(fp1);  
+    fclose(fp2);  
+    return 0;  
+} 
+ 
+5. Count Characters in a File  
+#include <stdio.h>  
+ 
+int main() {  
+    FILE *fp;  
+    char ch;  
+    int count = 0;  
+ 
+    fp = fopen("file.txt", "r");  
+ 
+    while ((ch = fgetc(fp)) != EOF) {  
+        count++;  
+    } 
+ 
+    printf("Total characters: %d", count);  
+ 
+    fclose(fp);  
+    return 0;  
+} 
+ 
+6. Count Lines in a File  
+#include <stdio.h>  
+ 
+int main() {  
+
+--- Page 3 ---
+    FILE *fp;  
+    char ch;  
+    int lines = 0;  
+ 
+    fp = fopen("file.txt", "r");  
+ 
+    while ((ch = fgetc(fp)) != EOF) {  
+        if (ch == ' \n') { 
+            lines++; 
+        } 
+    } 
+ 
+    printf("Total lines: %d", lines);  
+ 
+    fclose(fp);  
+    return 0;  
+} 
+ 
+7. Read and Write Using fgets  and fputs  
+#include <stdio.h>  
+ 
+int main() {  
+    FILE *fp;  
+    char str[100];  
+ 
+    fp = fopen("file.txt", "w");  
+ 
+    printf("Enter a string: ");  
+    fgets(str, sizeof(str), stdin);  
+ 
+    fputs(str, fp);  
+ 
+    fclose(fp);  
+ 
+    fp = fopen("file.txt", "r");  
+ 
+    fgets(str, sizeof(str), fp);  
+    printf("File content: %s", str);  
+ 
+    fclose(fp) ; 
+    return 0;  
+} 
+ 
+ 
+ 
+ 
+ 
+
+--- Page 4 ---
+ 
+Function for formatted input and output.  
+1. cin (Input)  
+#include <iostream>  
+using namespace std;  
+ 
+int main() {  
+    int x; 
+    cin >> x;  
+    cout << x;  
+} 
+Input:  
+5 
+Output:  
+5 
+ 
+2. cout  (Output)  
+#include <iostream>  
+using namespace std;  
+ 
+int main() {  
+    cout << "Hello";  
+} 
+Output:  
+Hello 
+ 
+3. setw()  
+#include <iostream>  
+#include <iomanip>  
+using namespace std;  
+ 
+int main() {  
+    cout << setw(5) << 10;  
+} 
+Output:  
+   10 
+ 
+
+--- Page 5 ---
+4. setprecision()  
+#include <iostream>  
+#include <iomanip>  
+using namespace std;  
+ 
+int main() {  
+    double x = 3.14159;  
+    cout << setprecision(3) << x;  
+} 
+Output:  
+3.14 
+ 
+5. fixed  
+#include <iostream>  
+#include <iomanip>  
+using namespace std;  
+ 
+int main() {  
+    double x = 3.14159;  
+    cout << fixed << x;  
+} 
+Output:  
+3.141590  
+ 
+6. setfill()  
+#include <iostream>  
+#include <iomanip>  
+using namespace std;  
+ 
+int main() {  
+    cout << setw(5) << setfill('*') << 10;  
+} 
+Output:  
+***10 
+ 
+7. left  
+#include <iostream>  
+#include < iomanip>  
+using namespace std;  
+ 
+int main() {  
+    cout << left << setw(5) << 10;  
+} 
+
+--- Page 6 ---
+Output:  
+10    
+ 
+8. right  
+#include <iostream>  
+#include <iomanip>  
+using namespace std;  
+ 
+int main() {  
+    cout << right << setw(5) << 10;  
+} 
+Output:  
+   10 
+ 
+9. endl  
+#include <iostream>  
+using namespace std;  
+ 
+int main() {  
+    cout << "A" << endl << "B";  
+} 
+Output:  
+A 
+B 
+ 
+10. showpoint  
+#include <iostream>  
+using namespace std;  
+ 
+int main() {  
+    cout << showpoint << 5.0;  
+} 
+Output:  
+5.00000 
+ 
+Quick Combined Example:  
+cout << fixed << setprecision(2) << setw(8) << setfill('*') << 3.5;  
+
+--- Page 7 ---
+Output:  
+****3.50  
+ 
+ 
+1. Write data to a file (ofstream ) 
+#include <iostream>  
+#include <fstream>  
+using namespace std;  
+ 
+int main() {  
+    ofstream fout("file1.txt");  
+    fout << "Hello C++ File Handling";  
+    fout.close();  
+    cout << "Data writ ten"; 
+} 
+Output:  
+Data written  
+File Content (file1.txt ): 
+Hello C++ File Handling  
+ 
+2. Read data from a file (ifstream ) 
+#include <iostream>  
+#include <fstream>  
+using namespace std;  
+ 
+int main() {  
+    ifstream fin("file1.txt");  
+    string data;  
+    getline(fin, data);  
+    cout << data;  
+    fin.close();  
+} 
+Output:  
+Hello C++ File Handling  
+ 
+
+--- Page 8 ---
+3. Append data to a file (ofstream  with  ios::app ) 
+#include <iostream>  
+#include <fstream>  
+using namespace std ; 
+ 
+int main() {  
+    ofstream fout("file1.txt", ios::app);  
+    fout << " \nAppended Line";  
+    fout.close();  
+    cout << "Data appended";  
+} 
+Output:  
+Data appended  
+Updated File:  
+Hello C++ File Handling  
+Appended Line  
+ 
+4. Read entire file using loop  
+#include <iostream>  
+#include <fstream>  
+using namespace std;  
+ 
+int main() {  
+    ifstream fin("file1.txt");  
+    string line;  
+ 
+    while(getline(fin, line)) {  
+        cout << line << endl;  
+    } 
+    fin.close();  
+} 
+Output:  
+Hello C++ File Handling  
+Appended Line  
+ 
+5. Count number of words in file  
+#include <iostream>  
+#include <fstream>  
+using namespace std;  
+ 
+int main() {  
+    ifstream fin("file1.txt");  
+
+--- Page 9 ---
+    string word;  
+    int count = 0;  
+ 
+    while(fin >> word) {  
+        count++;  
+    } 
+    cout << "Words: " << count;  
+    fin.close();  
+} 
+Output:  
+Words: 4  
+ 
+6. Copy one file to another (ifstream  + ofstream ) 
+#include <iostream>  
+#include <fstream>  
+using namespace std;  
+ 
+int main() {  
+    ifstream fin("file1.txt");  
+    ofstream fout("file2.txt");  
+    string line;  
+ 
+    while(getli ne(fin, line)) {  
+        fout << line << endl;  
+    } 
+ 
+    fin.close();  
+    fout.close();  
+    cout << "File copied";  
+} 
+Output:  
+File copied  
+ 
+7. Use  fstream  for read + write  
+#include <iostream>  
+#include <fstream>  
+using namespace std;  
+ 
+int main() {  
+    fstream file("file3.txt", ios::in | ios::out | ios::trunc);  
+ 
+    file << "C++ fstream Example";  
+ 
+    file.seekg(0); // move pointer to beginning  
+ 
+
+--- Page 10 ---
+    string data;  
+    getline(file, data);  
+    cout << data;  
+ 
+    file.close();  
+} 
+Output:  
+C++ fstream Example  
+ 
+Quick Viva Tip:  
+ ofstream  → write  
+ ifstream  → read  
+ fstream  → read + write  
+ 

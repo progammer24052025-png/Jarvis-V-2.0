@@ -1,0 +1,45 @@
+# ── Environment & Secrets ──
+.env
+.env.*
+!.env.example
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Virtual Environment ──
+.venv/
+venv/
+ENV/
+
+# ── Database (user data, not code) ──
+database/chats_data/
+database/vector_store/
+# Keep learning_data structure but not contents
+database/learning_data/*.txt
+
+# ── IDE & Editor ──
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Generated audio ──
+frontend/audio/*.mp3
+
+# ── OS ──
+$RECYCLE.BIN/
+Desktop.ini
+ehthumbs.db
+
+# ── Node (if ever used) ──
+node_modules/
