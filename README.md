@@ -593,9 +593,6 @@ Typical latencies:
 ## Developer
 
 **J.A.R.V.I.S** was **re-visioned** by **Rudraksh Patel**, a programmer known for simplifying complex topics with innovative methods.
-- **Jarvis for Everyone:** [jarvis4everyone.com](https://jarvis4everyone.com)
-
-> For the latest version of Jarvis and updates, visit **[Jarvis for Everyone](https://jarvis4everyone.com)**.
 
 **Start chatting:** `python run.py` then open http://localhost:8000
 
