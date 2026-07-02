@@ -15,13 +15,16 @@ import re
 import base64
 import asyncio
 import os
+import uuid
 from collections import defaultdict
+from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 import edge_tts
 from pydantic import BaseModel
 from app.models import ChatRequest, ChatResponse, TTSRequest, SettingsUpdate
 import config as config_module
 from app.services.tools.tool_executor import process_text_for_actions
+from langchain_core.messages import SystemMessage, HumanMessage
 
 RATE_LIMIT_MESSAGE = (
     "You've reached your daily API limit for this assistant. "
@@ -41,7 +44,7 @@ from app.services.brain_service import BrainService
 from config import (
     VECTOR_STORE_DIR, GROQ_API_KEYS, GROQ_MODEL, TAVILY_API_KEY,
     EMBEDDING_MODEL, CHUNK_SIZE, CHUNK_OVERLAP, MAX_CHAT_HISTORY_TURNS,
-    ASSISTANT_NAME, TTS_VOICE, TTS_RATE, CORS_ORIGINS,
+    ASSISTANT_NAME, TTS_VOICE, TTS_RATE, CORS_ORIGINS, APP_STATE_DIR,
 )
 
 # ── Simple in-memory rate limiter (no external dependency) ──
@@ -50,15 +53,18 @@ RATE_LIMIT_MAX = 30     # max requests per window
 RATE_LIMIT_WINDOW = 60  # window in seconds
 
 def _check_rate_limit(request: Request) -> bool:
-    """Return True if the request should be rate-limited (denied)."""
+    """Return True if the request should be rate-limited (denied).
+    Keys on IP + User-Agent to avoid localhost collision (Step 10 fix)."""
     client_ip = request.client.host if request.client else "unknown"
+    user_agent = request.headers.get("user-agent", "")
+    rate_key = f"{client_ip}:{user_agent}"
     now = time.time()
-    timestamps = _rate_limit_store[client_ip]
+    timestamps = _rate_limit_store[rate_key]
     # Prune old entries
-    _rate_limit_store[client_ip] = [t for t in timestamps if now - t < RATE_LIMIT_WINDOW]
-    if len(_rate_limit_store[client_ip]) >= RATE_LIMIT_MAX:
+    _rate_limit_store[rate_key] = [t for t in timestamps if now - t < RATE_LIMIT_WINDOW]
+    if len(_rate_limit_store[rate_key]) >= RATE_LIMIT_MAX:
         return True
-    _rate_limit_store[client_ip].append(now)
+    _rate_limit_store[rate_key].append(now)
     return False
 
 # ── Logging setup (supports LOG_FORMAT=json for structured logs) ──
@@ -92,6 +98,9 @@ uploaded_files_db: dict = {}
 # Key: reminder_id, Value: {"id": str, "message": str, "remind_at": datetime, "repeat": str, "sound": str, "speak": bool, "active": bool}
 reminders_db: dict = {}
 _reminder_task: asyncio.Task = None
+_health_task: asyncio.Task = None
+_shutdown_check_task: asyncio.Task = None
+_jarvis_shutting_down = False  # Set to True when exit_jarvis is triggered
 
 # Webhook storage for AI completion notifications
 # Key: webhook_id, Value: {"id": str, "url": str, "events": list, "active": bool}
@@ -108,6 +117,86 @@ calendar_config: dict = {"credentials_json": "", "token_json": ""}
 
 # Slack configuration
 slack_config: dict = {"bot_token": "", "signing_secret": "", "app_token": ""}
+
+
+# ── App State Persistence ──
+# Save/load in-memory state dicts to disk so they survive restarts.
+
+def _save_app_state():
+    """Persist all in-memory state dicts to disk as JSON."""
+    state = {
+        "reminders": reminders_db,
+        "webhooks": webhooks_db,
+        "uploaded_files": uploaded_files_db,
+        "integrations": {
+            "email": email_config,
+            "notion": notion_config,
+            "calendar": calendar_config,
+            "slack": slack_config,
+        },
+    }
+    filepath = APP_STATE_DIR / "app_state.json"
+    try:
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.warning("[STATE] Failed to save app state: %s", e)
+
+
+def _load_app_state():
+    """Load persisted state dicts from disk into memory."""
+    global reminders_db, webhooks_db, uploaded_files_db
+    global email_config, notion_config, calendar_config, slack_config
+
+    filepath = APP_STATE_DIR / "app_state.json"
+    if not filepath.exists():
+        logger.info("[STATE] No saved app state found, starting fresh")
+        return
+
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            state = json.load(f)
+
+        reminders_db = state.get("reminders", {})
+        webhooks_db = state.get("webhooks", {})
+        uploaded_files_db = state.get("uploaded_files", {})
+
+        integrations = state.get("integrations", {})
+        email_config.update(integrations.get("email", {}))
+        notion_config.update(integrations.get("notion", {}))
+        calendar_config.update(integrations.get("calendar", {}))
+        slack_config.update(integrations.get("slack", {}))
+
+        logger.info(
+            "[STATE] Loaded app state: %d reminders, %d webhooks, %d uploaded files",
+            len(reminders_db), len(webhooks_db), len(uploaded_files_db),
+        )
+    except Exception as e:
+        logger.warning("[STATE] Failed to load app state: %s", e)
+
+
+async def _check_shutdown_flag():
+    """Background task that checks for the JARVIS shutdown flag file (set by exit_jarvis tool)."""
+    import os
+    global _jarvis_shutting_down
+    flag_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".jarvis_shutdown")
+    while True:
+        try:
+            await asyncio.sleep(2)
+            if os.path.exists(flag_path):
+                logger.info("[SHUTDOWN] Shutdown flag detected. Initiating graceful shutdown.")
+                os.remove(flag_path)
+                _jarvis_shutting_down = True
+                # Give streams 2 seconds to deliver the goodbye message
+                await asyncio.sleep(2)
+                # Trigger uvicorn shutdown
+                import signal
+                os.kill(os.getpid(), signal.SIGTERM)
+                break
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.warning("[SHUTDOWN] Flag check error: %s", e)
 
 
 async def _run_reminder_checker():
@@ -143,15 +232,21 @@ async def _run_reminder_checker():
                     elif repeat == "weekly":
                         reminder["remind_at"] = (remind_dt + timedelta(weeks=1)).isoformat()
                     elif repeat == "monthly":
-                        reminder["remind_at"] = (remind_dt + timedelta(days=30)).isoformat()
-                        
+                        # Use manual month arithmetic to avoid drift (Step 12 fix)
+                        _m = remind_dt.month + 1
+                        _y = remind_dt.year + (1 if _m > 12 else 0)
+                        _m = ((_m - 1) % 12) + 1
+                        import calendar as _cal
+                        _max_day = _cal.monthrange(_y, _m)[1]
+                        _d = min(remind_dt.day, _max_day)
+                        reminder["remind_at"] = remind_dt.replace(year=_y, month=_m, day=_d).isoformat()
+                    _save_app_state()
+
         except asyncio.CancelledError:
             break
         except Exception as e:
             logger.warning("[REMINDER] Check error: %s", e)
 
-
-from datetime import timedelta
 
 
 def search_vector_store_for_files(query: str, top_k: int = 3) -> list:
@@ -160,10 +255,7 @@ def search_vector_store_for_files(query: str, top_k: int = 3) -> list:
         return []
     
     try:
-        retriever = vector_store_service.vector_store.as_retriever(
-            search_type="similarity",
-            search_kwargs={"k": top_k}
-        )
+        retriever = vector_store_service.get_retriever(k=top_k)
         docs = retriever.invoke(query)
         results = []
         for doc in docs:
@@ -179,9 +271,35 @@ def search_vector_store_for_files(query: str, top_k: int = 3) -> list:
         logger.warning("[VECTOR] Search failed: %s", e)
         return []
 
+def _inject_file_context(session_id: str, user_message: str) -> str:
+    """Inject uploaded file context and vector search results into user message."""
+    file_ctx = uploaded_file_context.get(session_id) or uploaded_file_context.get("global")
+    vector_file_results = search_vector_store_for_files(user_message, top_k=2)
+
+    if not file_ctx and not vector_file_results:
+        return user_message
+
+    context_parts = []
+    if file_ctx:
+        context_parts.append(
+            f"[The user previously uploaded a file: {file_ctx['filename']} ({file_ctx['file_type']}, {file_ctx['words']} words)]\n"
+            f"--- FILE CONTENT ---\n{file_ctx['content']}\n--- END FILE CONTENT ---"
+        )
+    if vector_file_results:
+        for result in vector_file_results:
+            context_parts.append(
+                f"[Relevant content from uploaded file: {result['source']}]\n"
+                f"--- CONTENT ---\n{result['content'][:2000]}\n--- END CONTENT ---"
+            )
+
+    enhanced_msg = f"{chr(10).join(context_parts)}\n\nUser's question: {user_message}"
+    logger.info("[UPLOAD-CONTEXT] Injected file context + vector search results into session %s", session_id[:12])
+    return enhanced_msg
+
 def print_title():
     """Print the J.A.R.V.I.S ASCII art title."""
-    title = """
+    import sys
+    fancy = """
    ╔══════════════════════════════════════════════════════════╗
    ║                                                          ║
    ║         ██╗ █████╗ ██████╗ ██╗   ██╗██╗███████╗          ║
@@ -196,11 +314,23 @@ def print_title():
    ╚══════════════════════════════════════════════════════════╝
 
     """
-    print(title)
+    plain = """
+  ==========================================================
+  |                                                        |
+  |           J.A.R.V.I.S  Starting Up...                  |
+  |       Just A Rather Very Intelligent System            |
+  |                                                        |
+  ==========================================================
+    """
+    enc = (sys.stdout.encoding or "ascii").lower()
+    if enc in ("utf-8", "utf8"):
+        print(fancy)
+    else:
+        print(plain)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global vector_store_service, groq_service, realtime_service, brain_service, chat_service, _reminder_task
+    global vector_store_service, groq_service, realtime_service, brain_service, chat_service, _reminder_task, _health_task, _shutdown_check_task
 
     print_title()
     logger.info("=" * 60)
@@ -214,6 +344,9 @@ async def lifespan(app: FastAPI):
     logger.info("[CONFIG] Embedding model: %s", EMBEDDING_MODEL)
     logger.info("[CONFIG] Chunk size: %d | Overlap: %d | Max history turns: %d",
                 CHUNK_SIZE, CHUNK_OVERLAP, MAX_CHAT_HISTORY_TURNS)
+
+    # Load persisted app state (reminders, webhooks, integration configs)
+    _load_app_state()
 
     try:
         logger.info("Initializing vector store service...")
@@ -238,10 +371,21 @@ async def lifespan(app: FastAPI):
         chat_service = ChatService(groq_service, realtime_service, brain_service)
         logger.info("Chat service initialized successfully")
 
-        # Start reminder background task
+        # Start reminder Background task
         logger.info("Starting reminder monitoring service...")
         _reminder_task = asyncio.create_task(_run_reminder_checker())
         logger.info("Reminder service started")
+        
+        # Start health monitor background task
+        logger.info("Starting PC health monitor...")
+        from app.services.health_service import get_health_monitor
+        health_monitor = get_health_monitor()
+        health_monitor.start()
+        logger.info("Health monitor started")
+        
+        # Start shutdown flag checker (for exit_jarvis tool)
+        _shutdown_check_task = asyncio.create_task(_check_shutdown_flag())
+        logger.info("Shutdown flag checker started")
 
         logger.info("=" * 60)
         logger.info("Service Status:")
@@ -251,6 +395,7 @@ async def lifespan(app: FastAPI):
         logger.info("  - Brain (Groq): Ready")
         logger.info("  - Chat Service: Ready")
         logger.info("  - Reminder Service: Ready")
+        logger.info("  - Health Monitor: Ready")
         logger.info("=" * 60)
         logger.info("J.A.R.V.I.S is online and ready!")
         logger.info("API: http://localhost:8000")
@@ -264,6 +409,18 @@ async def lifespan(app: FastAPI):
             _reminder_task.cancel()
             try:
                 await _reminder_task
+            except asyncio.CancelledError:
+                pass
+
+        # Stop health monitor
+        from app.services.health_service import get_health_monitor
+        get_health_monitor().stop()
+
+        # Cancel shutdown checker
+        if _shutdown_check_task:
+            _shutdown_check_task.cancel()
+            try:
+                await _shutdown_check_task
             except asyncio.CancelledError:
                 pass
 
@@ -430,6 +587,7 @@ def _generate_tts_sync(text: str, voice: str, rate: str) -> bytes:
 _tts_pool = ThreadPoolExecutor(max_workers=4)
 
 def _stream_generator(session_id: str, chunk_iter, is_realtime: bool, tts_enabled: bool = False):
+    global _jarvis_shutting_down
     yield f"data: {json.dumps({'session_id': session_id, 'chunk': '', 'done': False})}\n\n"
 
     buffer = ""
@@ -443,7 +601,7 @@ def _stream_generator(session_id: str, chunk_iter, is_realtime: bool, tts_enable
             return
         # Strip [EMOTION:tag] and [ACTION:...] so they're not spoken aloud
         text = re.sub(r'^\[EMOTION:\w+\]\n?', '', text).strip()
-        text = re.sub(r'\[ACTION:\w+\([^)]*\)\]', '', text).strip()
+        text = re.sub(r'\[ACTION:\w+\(.*?\)\]', '', text, flags=re.DOTALL).strip()
         if not text:
             return
         audio_queue.append((_tts_pool.submit(_generate_tts_sync, text, config_module.TTS_VOICE, config_module.TTS_RATE), text))
@@ -511,6 +669,7 @@ def _stream_generator(session_id: str, chunk_iter, is_realtime: bool, tts_enable
         return
 
     # Process [ACTION:...] tags from the full response
+    action_results = []
     try:
         cleaned_text, action_results = process_text_for_actions(full_text)
         for ar in action_results:
@@ -518,6 +677,43 @@ def _stream_generator(session_id: str, chunk_iter, is_realtime: bool, tts_enable
             logger.info("[TOOL] Executed %s -> %s", ar['tool'], str(ar['result'])[:100])
     except Exception as e:
         logger.warning("[TOOL] Action processing error: %s", e)
+
+    # Send tool results directly to the user (no extra LLM call = instant)
+    if action_results and chat_service:
+        try:
+            # Update the assistant message in history to cleaned text (without action tags)
+            if chat_service.sessions.get(session_id):
+                chat_service.sessions[session_id][-1].content = cleaned_text
+
+            # Format tool results as a direct, readable response
+            result_parts = []
+            for ar in action_results:
+                result_parts.append(ar['result'])
+            direct_text = "\n\n".join(result_parts)
+
+            if direct_text.strip():
+                # Send the results as response chunks (appears in chat bubble)
+                chunk_size = 40
+                for i in range(0, len(direct_text), chunk_size):
+                    piece = direct_text[i:i + chunk_size]
+                    yield f"data: {json.dumps({'chunk': piece, 'done': False})}\n\n"
+
+                # Update assistant message to include results
+                if chat_service.sessions.get(session_id):
+                    chat_service.sessions[session_id][-1].content = cleaned_text + "\n\n" + direct_text
+                    chat_service.save_chat_session(session_id)
+
+                # TTS for the results
+                if tts_enabled:
+                    try:
+                        _submit(direct_text)
+                    except Exception as tts_err:
+                        logger.warning("[TOOL-TTS] Error: %s", tts_err)
+
+                logger.info("[TOOL-RESULT] Sent %d chars directly to user", len(direct_text))
+
+        except Exception as e:
+            logger.warning("[TOOL-RESULT] Error sending results: %s", e, exc_info=True)
 
     if tts_enabled:
         remaining = buffer.strip()
@@ -541,6 +737,10 @@ def _stream_generator(session_id: str, chunk_iter, is_realtime: bool, tts_enable
             except Exception as exc:
                 logger.warning("[TTS-INLINE] Failed for '%s': %s", (sent or "")[:40], exc)
 
+    # If JARVIS is shutting down, send shutdown event BEFORE done (frontend stops reading at done)
+    if _jarvis_shutting_down:
+        yield f"data: {json.dumps({'shutdown': True})}\n\n"
+
     # Always emit the done event (regardless of TTS state)
     yield f"data: {json.dumps({'chunk': '', 'done': True, 'session_id': session_id})}\n\n"
 
@@ -553,43 +753,7 @@ async def chat_stream(request: ChatRequest):
     try:
         session_id = chat_service.get_or_create_session(request.session_id)
 
-        # ── Inject uploaded file context if available ──
-        # Keep file context (don't pop) so it persists for future messages
-        user_msg = request.message
-        file_ctx = uploaded_file_context.get(session_id) or uploaded_file_context.get("global")
-        
-        # Also search vector store for relevant file content
-        vector_file_results = search_vector_store_for_files(request.message, top_k=2)
-        
-        if file_ctx or vector_file_results:
-            context_parts = []
-            
-            # Add explicitly uploaded file context
-            if file_ctx:
-                context_parts.append(
-                    f"[The user previously uploaded a file: {file_ctx['filename']} ({file_ctx['file_type']}, {file_ctx['words']} words)]\n"
-                    f"--- FILE CONTENT ---\n{file_ctx['content']}\n--- END FILE CONTENT ---"
-                )
-            
-            # Add vector store search results for uploaded files
-            if vector_file_results:
-                for result in vector_file_results:
-                    context_parts.append(
-                        f"[Relevant content from uploaded file: {result['source']}]\n"
-                        f"--- CONTENT ---\n{result['content'][:2000]}\n--- END CONTENT ---"
-                    )
-            
-            user_msg = (
-                f"{chr(10).join(context_parts)}\n\n"
-                f"User's question: {request.message}"
-            )
-            logger.info("[UPLOAD-CONTEXT] Injected file context + vector search results into session %s", session_id[:12])
-            f"[The user uploaded a file: {file_ctx['filename']} ({file_ctx['file_type']}, {file_ctx['words']} words)]\n"
-            f"--- FILE CONTENT START ---\n{file_ctx['content']}\n--- FILE CONTENT END ---\n\n"
-            f"User's question: {request.message}"
-            
-            logger.info("[UPLOAD-CONTEXT] Injected %s (%d chars) into session %s",
-                        file_ctx['filename'], len(file_ctx['content']), session_id[:12])
+        user_msg = _inject_file_context(session_id, request.message)
 
         chunk_iter = chat_service.process_message_stream(session_id, user_msg)
         return StreamingResponse(
@@ -643,36 +807,7 @@ async def chat_realtime_stream(request: ChatRequest):
                 request.session_id or "new", len(request.message), request.message)
     try:
         session_id = chat_service.get_or_create_session(request.session_id)
-        user_msg = request.message
-        # Keep file context (don't pop) so it persists for future messages
-        file_ctx = uploaded_file_context.get(session_id) or uploaded_file_context.get("global")
-        
-        # Also search vector store for relevant file content
-        vector_file_results = search_vector_store_for_files(request.message, top_k=2)
-        
-        if file_ctx or vector_file_results:
-            context_parts = []
-            
-            # Add explicitly uploaded file context
-            if file_ctx:
-                context_parts.append(
-                    f"[The user previously uploaded a file: {file_ctx['filename']} ({file_ctx['file_type']}, {file_ctx['words']} words)]\n"
-                    f"--- FILE CONTENT ---\n{file_ctx['content']}\n--- END FILE CONTENT ---"
-                )
-            
-            # Add vector store search results for uploaded files
-            if vector_file_results:
-                for result in vector_file_results:
-                    context_parts.append(
-                        f"[Relevant content from uploaded file: {result['source']}]\n"
-                        f"--- CONTENT ---\n{result['content'][:2000]}\n--- END CONTENT ---"
-                    )
-            
-            user_msg = (
-                f"{chr(10).join(context_parts)}\n\n"
-                f"User's question: {request.message}"
-            )
-            logger.info("[UPLOAD-CONTEXT] Injected file context + vector search results into session %s", session_id[:12])
+        user_msg = _inject_file_context(session_id, request.message)
         
         chunk_iter = chat_service.process_realtime_message_stream(session_id, user_msg)
         return StreamingResponse(
@@ -698,36 +833,7 @@ async def chat_jarvis_stream(request: ChatRequest):
                 request.session_id or "new", len(request.message), request.message)
     try:
         session_id = chat_service.get_or_create_session(request.session_id)
-        user_msg = request.message
-        # Keep file context (don't pop) so it persists for future messages
-        file_ctx = uploaded_file_context.get(session_id) or uploaded_file_context.get("global")
-        
-        # Also search vector store for relevant file content
-        vector_file_results = search_vector_store_for_files(request.message, top_k=2)
-        
-        if file_ctx or vector_file_results:
-            context_parts = []
-            
-            # Add explicitly uploaded file context
-            if file_ctx:
-                context_parts.append(
-                    f"[The user previously uploaded a file: {file_ctx['filename']} ({file_ctx['file_type']}, {file_ctx['words']} words)]\n"
-                    f"--- FILE CONTENT ---\n{file_ctx['content']}\n--- END FILE CONTENT ---"
-                )
-            
-            # Add vector store search results for uploaded files
-            if vector_file_results:
-                for result in vector_file_results:
-                    context_parts.append(
-                        f"[Relevant content from uploaded file: {result['source']}]\n"
-                        f"--- CONTENT ---\n{result['content'][:2000]}\n--- END CONTENT ---"
-                    )
-            
-            user_msg = (
-                f"{chr(10).join(context_parts)}\n\n"
-                f"User's question: {request.message}"
-            )
-            logger.info("[UPLOAD-CONTEXT] Injected file context + vector search results into session %s", session_id[:12])
+        user_msg = _inject_file_context(session_id, request.message)
         
         chunk_iter = chat_service.process_jarvis_message_stream(session_id, user_msg)
         return StreamingResponse(
@@ -770,7 +876,10 @@ async def list_sessions():
     """List all saved chat sessions with metadata."""
     sessions = []
     try:
-        for fp in sorted(config_module.CHATS_DATA_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        # Sort by filename (encodes creation order) instead of st_mtime to avoid extra stat calls
+        files = sorted(config_module.CHATS_DATA_DIR.glob("*.json"), key=lambda p: p.name, reverse=True)
+        # Limit to 50 sessions max
+        for fp in files[:50]:
             try:
                 with open(fp, "r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -1027,17 +1136,17 @@ async def upload_file(request: FastAPIRequest):
         logger.info("[UPLOAD] Stored context for session %s (%d chars)", session_id[:12], len(upload_context_text))
 
         # ── Store in persistent file database (for multi-message reference) ──
-        import datetime
         uploaded_files_db[safe_name] = {
             "filename": safe_name,
             "original_name": filename,
             "content": text,  # Store full content, not truncated
             "file_type": file_type,
             "words": word_count,
-            "uploaded_at": datetime.datetime.now().isoformat(),
+            "uploaded_at": datetime.now().isoformat(),
             "session_id": session_id,
         }
         logger.info("[UPLOAD] Added to persistent file database: %s", safe_name)
+        _save_app_state()
 
         return {
             "status": "ok",
@@ -1056,6 +1165,81 @@ async def upload_file(request: FastAPIRequest):
     except Exception as e:
         logger.error("[UPLOAD] Unexpected error: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+# ── Voice Transcription (Groq Whisper) ──
+
+@app.post("/api/transcribe")
+async def transcribe_audio(request: FastAPIRequest):
+    """
+    Transcribe audio using Groq's Whisper API (whisper-large-v3-turbo).
+    Accepts audio file as multipart/form-data with key 'audio'.
+    Returns {"text": "transcribed text"}.
+    """
+    try:
+        form = await request.form()
+        audio_file = form.get("audio")
+        if not audio_file or not hasattr(audio_file, "read"):
+            raise HTTPException(status_code=400, detail="No audio file. Send as multipart/form-data with key 'audio'.")
+
+        audio_bytes = await audio_file.read()
+        if len(audio_bytes) < 100:
+            raise HTTPException(status_code=400, detail="Audio file is too small / empty.")
+        if len(audio_bytes) > 25 * 1024 * 1024:  # 25MB Groq limit
+            raise HTTPException(status_code=413, detail="Audio file too large (max 25MB).")
+
+        # Determine the filename extension for Groq (it needs a real extension)
+        original_name = getattr(audio_file, "filename", "audio.webm") or "audio.webm"
+        # Groq Whisper accepts: mp3, mp4, mpeg, mpga, m4a, wav, webm, ogg, flac
+        logger.info("[TRANSCRIBE] Received audio: %s (%d bytes)", original_name, len(audio_bytes))
+
+        # Try each Groq API key until one succeeds (rate-limit rotation)
+        from groq import Groq
+        import io
+
+        last_error = None
+        for api_key in GROQ_API_KEYS:
+            try:
+                client = Groq(api_key=api_key)
+                # Create a file-like object with the correct name for Groq
+                audio_io = io.BytesIO(audio_bytes)
+                audio_io.name = original_name  # Groq uses .name to detect format
+
+                transcription = client.audio.transcriptions.create(
+                    file=audio_io,
+                    model="whisper-large-v3-turbo",
+                    language="en",
+                    response_format="text",
+                )
+
+                transcript_text = str(transcription).strip()
+                if not transcript_text:
+                    logger.warning("[TRANSCRIBE] Empty transcript from Groq")
+                    return {"text": "", "status": "empty"}
+
+                logger.info("[TRANSCRIBE] Success (%d chars): %.100s", len(transcript_text), transcript_text)
+                return {"text": transcript_text, "status": "ok"}
+
+            except Exception as e:
+                last_error = e
+                err_msg = str(e).lower()
+                if "429" in str(e) or "rate limit" in err_msg or "tokens per day" in err_msg:
+                    logger.warning("[TRANSCRIBE] Rate limit on key ...%s, trying next", api_key[-6:])
+                    continue
+                else:
+                    # Non-rate-limit error — don't try other keys
+                    logger.error("[TRANSCRIBE] Groq error: %s", e)
+                    raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+
+        # All keys exhausted
+        logger.error("[TRANSCRIBE] All Groq API keys exhausted: %s", last_error)
+        raise HTTPException(status_code=429, detail="All API keys have reached their rate limit. Please try again later.")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("[TRANSCRIBE] Unexpected error: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Transcription error: {str(e)}")
 
 
 # ── File Management Endpoints ──
@@ -1101,6 +1285,7 @@ async def delete_uploaded_file(filename: str):
     
     # Remove from database
     del uploaded_files_db[filename]
+    _save_app_state()
     
     # Also remove from in-memory context if present
     for key in list(uploaded_file_context.keys()):
@@ -1154,17 +1339,28 @@ async def summarize_file(filename: str):
         raise HTTPException(status_code=503, detail="AI service not available")
     
     try:
-        summary_response = await groq_service.client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that creates concise summaries of documents. Provide a clear, well-structured summary with key points."},
-                {"role": "user", "content": f"Please summarize the following document:\n\n{content}"}
-            ],
-            temperature=0.3,
-            max_tokens=1024,
-        )
-        summary = summary_response.choices[0].message.content
-        
+        # Use LangChain ChatGroq with key rotation fallback
+        summary = None
+        last_exc = None
+        for llm in groq_service.llms:
+            try:
+                response = llm.invoke([
+                    SystemMessage(content="You are a helpful assistant that creates concise summaries of documents. Provide a clear, well-structured summary with key points."),
+                    HumanMessage(content=f"Please summarize the following document:\n\n{content}")
+                ])
+                summary = response.content
+                break
+            except Exception as key_exc:
+                last_exc = key_exc
+                err_msg = str(key_exc).lower()
+                if "429" in str(key_exc) or "rate limit" in err_msg:
+                    logger.warning("[SUMMARIZE] Rate limit on key, trying next")
+                    continue
+                else:
+                    raise
+        if summary is None:
+            raise Exception(f"All API keys failed: {last_exc}")
+
         return {
             "status": "ok",
             "filename": filename,
@@ -1236,14 +1432,12 @@ class ReminderCreate(BaseModel):
     speak: bool = False
     active: bool = True
 
-import uuid
-from datetime import datetime, timedelta
-
 def parse_datetime(dt_str: str) -> datetime:
     """Parse datetime string with flexible formats."""
     # Handle datetime-local format (YYYY-MM-DDTHH:MM)
     if 'T' not in dt_str and ' ' not in dt_str:
-        dt_str = dt_str.replace('-', 'T')
+        # Date-only string (e.g. "2026-04-25") — assume midnight
+        dt_str = dt_str + "T00:00"
     # Handle timezone info
     if dt_str.endswith('Z'):
         dt_str = dt_str[:-1] + '+00:00'
@@ -1276,6 +1470,7 @@ async def create_reminder(body: ReminderCreate):
         "created_at": datetime.now().isoformat(),
     }
     reminders_db[reminder_id] = reminder
+    _save_app_state()
     
     logger.info("[REMINDER] Created: %s at %s", reminder_id, remind_dt)
     return {"status": "ok", "reminder": reminder}
@@ -1303,6 +1498,7 @@ async def delete_reminder(reminder_id: str):
         raise HTTPException(status_code=404, detail=f"Reminder not found: {reminder_id}")
     
     del reminders_db[reminder_id]
+    _save_app_state()
     return {"status": "ok", "message": f"Reminder deleted: {reminder_id}"}
 
 @app.put("/chat/reminders/{reminder_id}")
@@ -1326,6 +1522,7 @@ async def update_reminder(reminder_id: str, body: ReminderCreate):
         "active": body.active,
         "created_at": reminders_db[reminder_id].get("created_at", datetime.now().isoformat()),
     }
+    _save_app_state()
     return {"status": "ok", "reminder": reminders_db[reminder_id]}
 
 @app.get("/chat/reminders/next")
@@ -1357,11 +1554,10 @@ async def create_reminder_ai(body: AIReminderRequest):
         raise HTTPException(status_code=503, detail="AI service not available")
     
     try:
-        # Use AI to parse the reminder request
-        response = await groq_service.client.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": """You are a reminder parser. Extract the reminder details from the user's message.
+        # Use LangChain ChatGroq with key rotation fallback
+        ai_response_content = None
+        last_exc = None
+        reminder_system_prompt = """You are a reminder parser. Extract the reminder details from the user's message.
 Return a JSON object with these fields:
 - message: The reminder message (what to remind)
 - remind_at: The datetime in ISO format (YYYY-MM-DDTHH:MM) - use current date as reference
@@ -1375,15 +1571,28 @@ Examples:
 - "Meeting with team every Monday at 3pm" -> {"message": "Meeting with team", "remind_at": "2026-04-27T15:00", "repeat": "weekly", "sound": "default", "speak": false}
 
 Current date and time: """ + datetime.now().strftime("%Y-%m-%d %H:%M") + """
-Only return valid JSON, no other text."""},
-                {"role": "user", "content": body.message}
-            ],
-            temperature=0.1,
-            max_tokens=256,
-        )
-        
-        import json
-        result = json.loads(response.choices[0].message.content)
+Only return valid JSON, no other text."""
+
+        for llm in groq_service.llms:
+            try:
+                response = llm.invoke([
+                    SystemMessage(content=reminder_system_prompt),
+                    HumanMessage(content=body.message)
+                ])
+                ai_response_content = response.content
+                break
+            except Exception as key_exc:
+                last_exc = key_exc
+                err_msg = str(key_exc).lower()
+                if "429" in str(key_exc) or "rate limit" in err_msg:
+                    logger.warning("[REMINDER] Rate limit on key, trying next")
+                    continue
+                else:
+                    raise
+        if ai_response_content is None:
+            raise Exception(f"All API keys failed: {last_exc}")
+
+        result = json.loads(ai_response_content)
         
         # Create the reminder
         reminder_id = str(uuid.uuid4())[:8]
@@ -1400,6 +1609,7 @@ Only return valid JSON, no other text."""},
             "created_at": datetime.now().isoformat(),
         }
         reminders_db[reminder_id] = reminder
+        _save_app_state()
         
         logger.info("[REMINDER] AI created: %s at %s", reminder_id, remind_dt)
         return {"status": "ok", "reminder": reminder, "parsed": result}
@@ -1413,6 +1623,43 @@ Only return valid JSON, no other text."""},
 
 # ── Webhook Endpoints ──
 
+def _validate_webhook_url(url: str) -> bool:
+    """Validate webhook URL to prevent SSRF attacks.
+    Must be HTTPS and must not resolve to localhost, private, or link-local IPs.
+    Returns True if valid, raises HTTPException if not.
+    """
+    import urllib.parse
+    import socket
+    import ipaddress
+
+    parsed = urllib.parse.urlparse(url)
+
+    # Must use HTTPS
+    if parsed.scheme != "https":
+        raise HTTPException(status_code=400, detail="Webhook URL must use HTTPS.")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise HTTPException(status_code=400, detail="Webhook URL has no valid hostname.")
+
+    # Resolve hostname and check for private/internal IPs
+    try:
+        addr_infos = socket.getaddrinfo(hostname, parsed.port or 443, proto=socket.IPPROTO_TCP)
+        for family, _, _, _, sockaddr in addr_infos:
+            ip = ipaddress.ip_address(sockaddr[0])
+            if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Webhook URL resolves to a blocked IP address ({ip}). "
+                           "Internal/private addresses are not allowed."
+                )
+    except HTTPException:
+        raise
+    except socket.gaierror:
+        raise HTTPException(status_code=400, detail=f"Cannot resolve webhook hostname: {hostname}")
+
+    return True
+
 class WebhookCreate(BaseModel):
     url: str
     events: list[str] = ["chat_completed"]  # chat_completed, reminder_triggered, file_uploaded
@@ -1421,7 +1668,9 @@ class WebhookCreate(BaseModel):
 @app.post("/webhooks")
 async def create_webhook(body: WebhookCreate):
     """Create a new webhook for notifications."""
-    import uuid
+    # Validate URL to prevent SSRF
+    _validate_webhook_url(body.url)
+
     webhook_id = str(uuid.uuid4())[:8]
     webhook = {
         "id": webhook_id,
@@ -1431,6 +1680,7 @@ async def create_webhook(body: WebhookCreate):
         "created_at": datetime.now().isoformat(),
     }
     webhooks_db[webhook_id] = webhook
+    _save_app_state()
     logger.info("[WEBHOOK] Created: %s -> %s", webhook_id, body.url)
     return {"status": "ok", "webhook": webhook}
 
@@ -1454,6 +1704,7 @@ async def delete_webhook(webhook_id: str):
         raise HTTPException(status_code=404, detail=f"Webhook not found: {webhook_id}")
     
     del webhooks_db[webhook_id]
+    _save_app_state()
     return {"status": "ok", "message": f"Webhook deleted: {webhook_id}"}
 
 async def trigger_webhook(event: str, data: dict):
@@ -1507,6 +1758,7 @@ async def update_email_config(body: EmailConfigUpdate):
         email_config["from_email"] = body.from_email
     
     logger.info("[EMAIL] Config updated")
+    _save_app_state()
     return {"status": "ok", "message": "Email configuration updated"}
 
 class EmailSendRequest(BaseModel):
@@ -1572,6 +1824,7 @@ async def update_notion_config(body: NotionConfigUpdate):
         notion_config["database_id"] = body.database_id
     
     logger.info("[NOTION] Config updated")
+    _save_app_state()
     return {"status": "ok", "message": "Notion configuration updated"}
 
 @app.get("/integrations/notion/pages")
@@ -1651,6 +1904,7 @@ async def update_calendar_config(body: CalendarConfigUpdate):
         calendar_config["credentials_json"] = body.credentials_json
     
     logger.info("[CALENDAR] Config updated")
+    _save_app_state()
     return {"status": "ok", "message": "Calendar configuration updated"}
 
 @app.get("/integrations/calendar/auth")
@@ -1691,6 +1945,7 @@ async def calendar_callback(code: str = None, error: str = None):
             tokens = json.loads(response.read().decode())
         
         calendar_config["token_json"] = json.dumps(tokens)
+        _save_app_state()
         logger.info("[CALENDAR] OAuth successful")
         
         return {"status": "ok", "message": "Google Calendar connected successfully!"}
@@ -1714,7 +1969,6 @@ async def list_calendar_events(start_date: str = None, end_date: str = None):
             raise HTTPException(status_code=400, detail="Invalid token. Please reconnect.")
         
         # Get date range (default: next 7 days)
-        from datetime import datetime, timedelta
         if not start_date:
             start_date = datetime.now().isoformat()
         if not end_date:
@@ -1762,9 +2016,11 @@ async def list_calendar_events(start_date: str = None, end_date: str = None):
                         new_tokens = json.loads(response.read().decode())
                     
                     calendar_config["token_json"] = json.dumps({**tokens, **new_tokens})
+                    _save_app_state()
                     return await list_calendar_events(start_date, end_date)
             except:
                 calendar_config["token_json"] = ""
+                _save_app_state()
                 raise HTTPException(status_code=400, detail="Calendar token expired. Please reconnect.")
         raise HTTPException(status_code=500, detail=f"Calendar API error: {str(e)}")
     except Exception as e:
@@ -1844,6 +2100,7 @@ async def update_slack_config(body: SlackConfigUpdate):
         slack_config["app_token"] = body.app_token
     
     logger.info("[SLACK] Config updated")
+    _save_app_state()
     return {"status": "ok", "message": "Slack configuration updated"}
 
 @app.post("/integrations/slack/events")

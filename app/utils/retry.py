@@ -11,6 +11,11 @@ def with_retry(
     max_retries: int = 3,
     initial_delay: float = 1.0,
 ) -> T:
+    """Retry a synchronous function with exponential backoff.
+
+    NOTE: Uses time.sleep() — only call from sync contexts (e.g. LangChain
+    .invoke() callbacks or sync generators running in thread pools).
+    """
     if max_retries <= 0:
         return fn()
 

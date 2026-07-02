@@ -111,6 +111,10 @@ let speechSendTimeout = null;
 let pendingSendTranscript = null;
 let safariVoiceHintShown = false;
 
+/* Live interim transcription via Web Speech API (shows words as you speak) */
+let _interimRecognition = null;   /* SpeechRecognition instance for live preview */
+let _interimFinalText = '';       /* Final transcript from Web Speech API (before Whisper replaces it) */
+
 /*
  * orb — Reference to the OrbRenderer instance (the animated WebGL orb).
  * Null if OrbRenderer is unavailable or failed to initialize.
@@ -633,165 +637,343 @@ function initOrb() {
 }
 
 /* ================================================================
-   SPEECH RECOGNITION (Speech-to-Text)
+   SPEECH RECOGNITION (Groq Whisper via MediaRecorder)
    ================================================================
 
-   SPEECH-TO-TEXT REDESIGN — PC-FIRST, ACCURATE, AUTO-RESTART
+   SPEECH-TO-TEXT — SERVER-SIDE WHISPER TRANSCRIPTION
    ----------------------------------------------------------
    Design goals:
-   1. Work reliably on every PC (Chrome, Edge, etc.)
-   2. Accurate transcription — no duplication or concatenation bugs
+   1. Near-perfect transcription accuracy (Groq Whisper large-v3-turbo)
+   2. Works on every browser that supports MediaRecorder (Chrome, Edge, Firefox, Safari)
    3. Auto-restart after AI finishes speaking (stream + TTS complete)
-   4. Single utterance per session — clean, predictable behavior
+   4. Clean, predictable behavior — record → send → transcribe → auto-send
 
    Flow:
-   - User clicks mic → startListening() → recognition.start()
-   - User speaks → interim results shown in real time
-   - User pauses → final result → brief delay → send message → stopListening()
+   - User clicks mic → startListening() → MediaRecorder.start()
+   - User speaks → speech widget shows "Listening..."
+   - User clicks mic again (or silence detected) → stopListening()
+   - Audio blob sent to /api/transcribe → Groq Whisper → transcript returned
+   - Transcript auto-fills input and sends as message
    - AI responds (stream + TTS) → when TTS queue empty → maybeRestartListening()
-   - After SPEECH_RESTART_DELAY_MS → startListening() again
-
-   Chrome sends INCREMENTAL results (each extends the previous). We use
-   ONLY the last result to avoid "hello Ja hello jar..." duplication.
    ================================================================ */
 
-/** Detect Safari/iOS — needs different settings for stability */
-function isSafariOrIOS() {
-    if (typeof navigator === 'undefined') return false;
-    const ua = navigator.userAgent || '';
-    return /iPad|iPhone|iPod/.test(ua) ||
-        (navigator.vendor && navigator.vendor.indexOf('Apple') > -1) ||
-        (/Safari/.test(ua) && !/Chrome|Chromium|CriOS/.test(ua));
-}
+/** MediaRecorder instance for voice capture */
+let mediaRecorder = null;
+/** Collected audio chunks during recording */
+let audioChunks = [];
+/** Flag to track if MediaRecorder is available */
+let mediaRecorderAvailable = false;
+/** Silence detection timer — auto-stop after SILENCE_TIMEOUT_MS of no audio */
+const SILENCE_TIMEOUT_MS = 2500;
+let silenceTimer = null;
+/** Audio analyser for silence/volume detection */
+let audioAnalyser = null;
+let audioContext = null;
+let audioStream = null;
+let volumeCheckInterval = null;
+/** Track consecutive low-volume frames for silence detection */
+let lowVolumeFrames = 0;
+const LOW_VOLUME_THRESHOLD = 10;     // RMS amplitude below this = "silent"
+const SILENCE_FRAME_COUNT = 35;      // ~2.1s of silence at 60fps check interval
 
 /**
- * initSpeech() — Sets up SpeechRecognition with PC-optimized settings.
- * Uses single-utterance mode (continuous: false) for clean, accurate results.
+ * initSpeech() — Sets up MediaRecorder-based voice capture.
+ * Records audio from the mic, sends to backend Groq Whisper for transcription.
  */
 function initSpeech() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { micBtn.title = 'Speech not supported in this browser'; return; }
-
-    recognition = new SR();
-
-    /* PC: single utterance, interim results for real-time feedback. Avoids Chrome incremental bug. */
-    /* Safari: no interim (unstable), single utterance. */
-    const safariMode = isSafariOrIOS();
-    recognition.continuous = false;
-    recognition.interimResults = !safariMode;
-    recognition.maxAlternatives = 1;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = e => {
-        if (!e.results || e.results.length === 0) return;
-        /* Chrome sends incremental results — each extends the previous. Use ONLY the last. */
-        const last = e.results[e.results.length - 1];
-        const transcript = (last && last[0]) ? last[0].transcript.trim() : '';
-        const isFinal = last && last.isFinal;
-
-        if (speechWidgetText) speechWidgetText.textContent = transcript;
-        if (speechWidget) speechWidget.classList.add('visible');
-
-        if (isFinal && transcript) {
-            pendingSendTranscript = transcript;
-            clearTimeout(speechSendTimeout);
-            speechSendTimeout = setTimeout(() => {
-                if (pendingSendTranscript) {
-                    sendMessage(pendingSendTranscript);
-                    pendingSendTranscript = null;
-                }
-                speechSendTimeout = null;
-                stopListening();
-            }, SPEECH_SEND_DELAY_MS);
-        } else if (!isFinal) {
-            pendingSendTranscript = null;
-            clearTimeout(speechSendTimeout);
-            speechSendTimeout = null;
-        }
-    };
-
-    recognition.onstart = () => { speechErrorRetryCount = 0; };
-
-    recognition.onerror = e => {
-        stopListening();
-        const msg = (e && e.error) ? String(e.error) : '';
-        const isPermissionDenied = /denied|not-allowed|permission/i.test(msg);
-        if (isPermissionDenied && micBtn) {
-            micBtn.title = 'Microphone access denied. Allow in browser settings.';
-            speechErrorRetryCount = SPEECH_ERROR_MAX_RETRIES;
-        }
-        if (autoListenMode && !isStreaming && speechErrorRetryCount < SPEECH_ERROR_MAX_RETRIES) {
-            speechErrorRetryCount++;
-            setTimeout(() => maybeRestartListening(), SPEECH_RESTART_DELAY_MS);
-        } else if (speechErrorRetryCount >= SPEECH_ERROR_MAX_RETRIES && micBtn) {
-            micBtn.title = 'Voice input — click to try again';
-        }
-    };
-
-    recognition.onend = () => {
-        if (pendingSendTranscript) {
-            clearTimeout(speechSendTimeout);
-            speechSendTimeout = null;
-            sendMessage(pendingSendTranscript);
-            pendingSendTranscript = null;
-        } else {
-            clearTimeout(speechSendTimeout);
-            speechSendTimeout = null;
-        }
-        if (isListening) stopListening();
-        maybeRestartListening();
-    };
+    // Check for MediaRecorder support
+    if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        if (micBtn) micBtn.title = 'Voice input not supported in this browser';
+        console.warn('[JARVIS] MediaRecorder or getUserMedia not available');
+        return;
+    }
+    mediaRecorderAvailable = true;
+    if (micBtn) micBtn.title = 'Click to start voice input (Groq Whisper)';
 }
 
 /**
- * startListening() — Activates the microphone and begins speech recognition.
+ * startListening() — Activates the microphone and begins recording audio.
  *
  * Guards:
- *   - Does nothing if recognition isn't available (unsupported browser).
+ *   - Does nothing if MediaRecorder isn't available.
  *   - Does nothing if we're currently streaming a response (to avoid
  *     accidentally sending a voice message mid-stream).
  */
-function startListening() {
-    if (!recognition || isStreaming || isListening) return;
-    if (isSafariOrIOS() && !safariVoiceHintShown) {
-        showToast('Voice works best in Chrome. Safari has limited support.');
-        safariVoiceHintShown = true;
-    }
-    isListening = true;
-    pendingSendTranscript = null;
-    clearTimeout(speechSendTimeout);
-    speechSendTimeout = null;
-    if (micBtn) micBtn.classList.add('listening');
-    if (speechWidget) speechWidget.classList.add('visible');
-    if (speechWidgetText) speechWidgetText.textContent = '';
+async function startListening() {
+    if (!mediaRecorderAvailable || isStreaming || isListening) return;
+
     try {
-        recognition.start();
+        // Request microphone access
+        audioStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                channelCount: 1,
+                sampleRate: 16000,
+                echoCancellation: true,
+                noiseSuppression: true,
+            }
+        });
+
+        // Determine best supported MIME type
+        const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
+            .find(t => MediaRecorder.isTypeSupported(t)) || '';
+
+        mediaRecorder = new MediaRecorder(audioStream, mimeType ? { mimeType } : {});
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) audioChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+            // Clean up silence detection
+            _stopSilenceDetection();
+
+            if (audioChunks.length === 0) {
+                if (speechWidgetText) speechWidgetText.textContent = 'No audio captured';
+                setTimeout(() => {
+                    if (speechWidget) speechWidget.classList.remove('visible');
+                }, 1500);
+                return;
+            }
+
+            // Show transcribing state
+            if (speechWidgetText) speechWidgetText.textContent = 'Transcribing...';
+
+            // Build audio blob
+            const ext = mimeType.includes('webm') ? '.webm'
+                      : mimeType.includes('ogg') ? '.ogg'
+                      : mimeType.includes('mp4') ? '.mp4'
+                      : '.webm';
+            const blob = new Blob(audioChunks, { type: mimeType || 'audio/webm' });
+            audioChunks = [];
+
+            // Don't send very short recordings (likely accidental clicks)
+            if (blob.size < 1000) {
+                if (speechWidgetText) speechWidgetText.textContent = 'Too short';
+                setTimeout(() => {
+                    if (speechWidget) speechWidget.classList.remove('visible');
+                }, 1500);
+                maybeRestartListening();
+                return;
+            }
+
+            // Send to backend for transcription
+            try {
+                const form = new FormData();
+                form.append('audio', blob, `recording${ext}`);
+
+                const resp = await fetch(`${API}/api/transcribe`, { method: 'POST', body: form });
+                const data = await resp.json();
+
+                if (resp.ok && data.text && data.text.trim()) {
+                    const transcript = data.text.trim();
+                    if (speechWidgetText) speechWidgetText.textContent = transcript;
+
+                    // Auto-send the transcribed message after a brief flash
+                    setTimeout(() => {
+                        sendMessage(transcript);
+                        if (speechWidget) speechWidget.classList.remove('visible');
+                    }, 400);
+                } else if (resp.ok && (!data.text || !data.text.trim())) {
+                    if (speechWidgetText) speechWidgetText.textContent = 'No speech detected';
+                    setTimeout(() => {
+                        if (speechWidget) speechWidget.classList.remove('visible');
+                    }, 2000);
+                    maybeRestartListening();
+                } else {
+                    const errMsg = data.detail || 'Transcription failed';
+                    if (speechWidgetText) speechWidgetText.textContent = errMsg;
+                    showToast(`Voice: ${errMsg}`, 4000);
+                    setTimeout(() => {
+                        if (speechWidget) speechWidget.classList.remove('visible');
+                    }, 3000);
+                    maybeRestartListening();
+                }
+            } catch (err) {
+                console.error('[JARVIS] Transcription error:', err);
+                if (speechWidgetText) speechWidgetText.textContent = 'Transcription error';
+                showToast('Voice transcription failed. Check server.', 4000);
+                setTimeout(() => {
+                    if (speechWidget) speechWidget.classList.remove('visible');
+                }, 3000);
+                maybeRestartListening();
+            }
+        };
+
+        // Start recording — collect data every 250ms for smoother processing
+        mediaRecorder.start(250);
+        isListening = true;
+
+        if (micBtn) micBtn.classList.add('listening');
+        if (speechWidget) speechWidget.classList.add('visible');
+        if (speechWidgetText) speechWidgetText.textContent = 'Listening...';
+
+        /* ── Start live interim transcription (Web Speech API) ──
+         * This runs alongside MediaRecorder. It shows words appearing
+         * in real-time as the user speaks. Groq Whisper still provides
+         * the final accurate transcript for the actual message. */
+        _interimFinalText = '';
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            try {
+                _interimRecognition = new SpeechRecognition();
+                _interimRecognition.continuous = true;
+                _interimRecognition.interimResults = true;
+                _interimRecognition.lang = 'en-US';
+                _interimRecognition.maxAlternatives = 1;
+
+                _interimRecognition.onresult = (event) => {
+                    let interim = '';
+                    let final = '';
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        const transcript = event.results[i][0].transcript;
+                        if (event.results[i].isFinal) {
+                            final += transcript;
+                        } else {
+                            interim += transcript;
+                        }
+                    }
+                    if (final) _interimFinalText += final;
+                    /* Show live words in the speech widget */
+                    const displayText = (_interimFinalText + interim).trim();
+                    if (speechWidgetText && displayText) {
+                        speechWidgetText.textContent = displayText;
+                    }
+                };
+
+                _interimRecognition.onerror = (event) => {
+                    /* Silently ignore — Whisper is the primary transcription engine */
+                    console.warn('[JARVIS] Interim speech error (non-fatal):', event.error);
+                };
+
+                _interimRecognition.onend = () => {
+                    /* Recognition stopped — keep the final interim text visible
+                     * until Whisper replaces it with the accurate transcript */
+                };
+
+                _interimRecognition.start();
+            } catch (e) {
+                console.warn('[JARVIS] Web Speech API unavailable:', e);
+                _interimRecognition = null;
+            }
+        }
+
+        // Start silence detection using Web Audio API
+        _startSilenceDetection(audioStream);
+
     } catch (err) {
+        console.error('[JARVIS] Microphone access error:', err);
         isListening = false;
         if (micBtn) micBtn.classList.remove('listening');
         if (speechWidget) speechWidget.classList.remove('visible');
-        if (isSafariOrIOS()) showToast('Tap the mic to continue voice input.');
+
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+            if (micBtn) micBtn.title = 'Microphone access denied. Allow in browser settings.';
+            showToast('Microphone access denied. Please allow it in browser settings.', 5000);
+        } else {
+            showToast('Could not access microphone: ' + err.message, 4000);
+        }
     }
 }
 
 /**
- * stopListening() — Deactivates the microphone and stops recognition.
+ * _startSilenceDetection(stream) — Uses Web Audio API to monitor mic volume.
+ * When the user stops speaking (sustained low volume), auto-stops recording.
+ */
+function _startSilenceDetection(stream) {
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(stream);
+        audioAnalyser = audioContext.createAnalyser();
+        audioAnalyser.fftSize = 512;
+        source.connect(audioAnalyser);
+
+        const dataArray = new Uint8Array(audioAnalyser.frequencyBinCount);
+        lowVolumeFrames = 0;
+
+        // Check volume every 60ms
+        volumeCheckInterval = setInterval(() => {
+            if (!audioAnalyser || !isListening) return;
+            audioAnalyser.getByteTimeDomainData(dataArray);
+
+            // Calculate RMS (root mean square) volume
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                const val = (dataArray[i] - 128) / 128;
+                sum += val * val;
+            }
+            const rms = Math.sqrt(sum / dataArray.length) * 100;
+
+            if (rms < LOW_VOLUME_THRESHOLD) {
+                lowVolumeFrames++;
+            } else {
+                lowVolumeFrames = 0;
+                // User is speaking — update widget
+                if (speechWidgetText && speechWidgetText.textContent === 'Listening...') {
+                    speechWidgetText.textContent = 'Listening... 🎤';
+                }
+            }
+
+            // Auto-stop after sustained silence (only if we've recorded some audio)
+            if (lowVolumeFrames >= SILENCE_FRAME_COUNT && audioChunks.length > 2) {
+                stopListening();
+            }
+        }, 60);
+    } catch (e) {
+        console.warn('[JARVIS] Silence detection unavailable:', e);
+        // Fallback: simple timeout-based stop
+        silenceTimer = setTimeout(() => {
+            if (isListening) stopListening();
+        }, 15000);  // Max 15s recording without silence detection
+    }
+}
+
+/**
+ * _stopSilenceDetection() — Cleans up silence detection resources.
+ */
+function _stopSilenceDetection() {
+    if (volumeCheckInterval) { clearInterval(volumeCheckInterval); volumeCheckInterval = null; }
+    if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null; }
+    if (audioContext) {
+        try { audioContext.close(); } catch (_) {}
+        audioContext = null;
+    }
+    audioAnalyser = null;
+    lowVolumeFrames = 0;
+}
+
+/**
+ * stopListening() — Stops recording and triggers transcription.
  *
  * Called when:
- *   - A final transcript is received (auto-send).
  *   - The user clicks the mic button again (manual toggle off).
- *   - An error occurs.
- *   - The recognition engine stops unexpectedly.
+ *   - Silence is detected (auto-stop).
+ *   - A new message is being sent.
  */
 function stopListening() {
-    clearTimeout(speechSendTimeout);
-    speechSendTimeout = null;
-    pendingSendTranscript = null;
+    if (!isListening) return;
     isListening = false;
-    if (micBtn) micBtn.classList.remove('listening');  // Remove visual highlight
-    if (speechWidget) speechWidget.classList.remove('visible');
-    if (speechWidgetText) speechWidgetText.textContent = '';
-    try { recognition.stop(); } catch (_) {}
+
+    if (micBtn) micBtn.classList.remove('listening');
+
+    /* Stop live interim recognition (Web Speech API) */
+    if (_interimRecognition) {
+        try { _interimRecognition.stop(); } catch (_) {}
+        _interimRecognition = null;
+    }
+
+    // Stop the MediaRecorder — this triggers .onstop which sends audio for transcription
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        try { mediaRecorder.stop(); } catch (_) {}
+    }
+
+    // Release the microphone stream
+    if (audioStream) {
+        audioStream.getTracks().forEach(t => t.stop());
+        audioStream = null;
+    }
+
+    _stopSilenceDetection();
 }
 
 /**
@@ -800,11 +982,11 @@ function stopListening() {
  * Called from: sendMessage finally block, TTSPlayer.onPlaybackComplete.
  */
 function maybeRestartListening() {
-    if (!autoListenMode || !recognition) return;
+    if (!autoListenMode || !mediaRecorderAvailable) return;
     if (isStreaming) return;
     if (ttsPlayer && (ttsPlayer.playing || ttsPlayer.queue.length > 0)) return;
     setTimeout(() => {
-        if (autoListenMode && !isStreaming && !isListening && recognition) {
+        if (autoListenMode && !isStreaming && !isListening && mediaRecorderAvailable) {
             startListening();
         }
     }, SPEECH_RESTART_DELAY_MS);
@@ -2009,7 +2191,9 @@ function stripActionTags(text) {
             result += text[idx]; i = idx + 1; // Not a valid tag, keep character
         }
     }
-    return result.replace(/\n\s*\n\s*\n/g, '\n\n').trim();
+    // Clean up: collapse 3+ consecutive newlines into 2
+    var _multiNL = new RegExp('\\n\\s*\\n\\s*\\n', 'g');
+    return result.replace(_multiNL, '\n\n').trim();
 }
 
 /* Inline SVG icons for chat avatars (user = person, assistant = bot). */
@@ -2183,6 +2367,38 @@ function scrollToBottom() {
    the next iteration.
 
    ================================================================ */
+
+/**
+ * showJarvisGoodbye() — Called when JARVIS is shutting down.
+ * Shows a goodbye message, fades the orb, disables input.
+ */
+function showJarvisGoodbye() {
+    // Don't add a message -- the LLM already said "Goodbye, sir." before the shutdown event
+
+    // Disable input
+    if (messageInput) messageInput.disabled = true;
+    if (sendBtn) sendBtn.disabled = true;
+
+    // Fade the orb
+    if (orbContainer) {
+        orbContainer.style.transition = 'opacity 2s ease-out';
+        orbContainer.style.opacity = '0.3';
+    }
+
+    // Show offline message after 3 seconds
+    setTimeout(() => {
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            const offlineDiv = document.createElement('div');
+            offlineDiv.className = 'message assistant';
+            offlineDiv.style.textAlign = 'center';
+            offlineDiv.style.opacity = '0.5';
+            offlineDiv.innerHTML = '<em>JARVIS is offline.</em>';
+            chatMessages.appendChild(offlineDiv);
+            scrollToBottom();
+        }
+    }, 3000);
+}
 
 /**
  * sendMessage(textOverride) — Sends a user message and streams the AI response.
@@ -2362,6 +2578,13 @@ async function sendMessage(textOverride) {
 
                     // DONE — The server signals that the response is complete
                     if (data.done) { streamDone = true; break; }
+
+                    // SHUTDOWN — JARVIS is shutting down (exit_jarvis tool was triggered)
+                    if (data.shutdown) {
+                        streamDone = true;
+                        showJarvisGoodbye();
+                        break;
+                    }
                 } catch (parseErr) {
                     // Ignore JSON parse errors (e.g., partial lines) but re-throw real errors
                     if (parseErr.message && !parseErr.message.includes('JSON'))

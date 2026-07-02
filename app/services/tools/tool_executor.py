@@ -13,6 +13,14 @@ from app.services.tools.system_tools import SYSTEM_TOOLS
 
 logger = logging.getLogger("J.A.R.V.I.S")
 
+# Tools that require explicit user confirmation before execution.
+# When triggered, the system asks the user to confirm instead of executing immediately.
+REQUIRES_CONFIRMATION = {"empty_recycle_bin", "lock_pc", "delete_item", "shutdown_pc"}
+
+# Tracks pending destructive actions awaiting user confirmation.
+# Key: tool_name, Value: {"params": list, "prompt": str}
+_pending_confirmations: dict = {}
+
 
 def _find_action_tags(text: str) -> list:
     """
@@ -159,6 +167,24 @@ def execute_action(tool_name: str, params: list) -> str:
             if i < len(params):
                 kwargs[param_name] = params[i]
 
+        # Check if this is a confirmation for a pending destructive action
+        if tool_name in REQUIRES_CONFIRMATION:
+            # Check if user already confirmed (params contain "_confirmed")
+            if params and params[-1] == "_confirmed":
+                # Remove the confirmation marker before executing
+                kwargs.pop(expected_params[-1], None) if len(params) > len(expected_params) else None
+                _pending_confirmations.pop(tool_name, None)
+                logger.info("[TOOL-EXEC] Confirmed and executing: %s(%s)", tool_name, kwargs)
+                result = func(**kwargs)
+                logger.info("[TOOL-EXEC] Result: %s", str(result)[:200])
+                return result
+            else:
+                # Store pending confirmation
+                _pending_confirmations[tool_name] = {"params": params, "kwargs": kwargs}
+                logger.info("[TOOL-EXEC] Confirmation required for: %s", tool_name)
+                return (f"CONFIRMATION_REQUIRED: This action ({tool_name}) requires your explicit confirmation "
+                        f"for safety. Please say 'Yes, confirm {tool_name}' to proceed.")
+
         logger.info("[TOOL-EXEC] Executing: %s(%s)", tool_name, kwargs)
         result = func(**kwargs)
         logger.info("[TOOL-EXEC] Result: %s", str(result)[:200])
@@ -210,11 +236,14 @@ def get_tools_description() -> str:
         "The tag will be executed by the system and removed from the displayed response.",
         "Place the tag on its own line. You can include multiple action tags if needed.",
         "",
-        "IMPORTANT:",
-        "- Always include the action tag when you want to perform an action.",
-        "- The action is executed IMMEDIATELY — tell the user you are doing it.",
-        "- You MUST still respond normally alongside the action tag.",
-        "- Never show the raw [ACTION:...] syntax to the user in your spoken text.",
+        "CRITICAL RULES:",
+        "- The system will automatically show tool results to the user AFTER your response.",
+        "- Keep your text BEFORE the action tag VERY BRIEF (1-5 words max).",
+        "- GOOD: 'Checking. [ACTION:git_status(\"project\")]'",
+        "- BAD: 'Let me check the git status of your project for you...' (too long, results shown anyway)",
+        "- BAD: 'I am finding the information...' (unnecessary preamble)",
+        "- Never show the raw [ACTION:...] syntax to the user.",
+        "- Do NOT try to report tool results yourself — the system handles that automatically.",
         "",
         "Available tools:",
     ]
@@ -225,30 +254,27 @@ def get_tools_description() -> str:
 
     lines.extend([
         "",
-        "Examples:",
+        "Examples (note how brief the text is):",
         '  User: "Open Chrome"',
-        '  Response: "Right away. [ACTION:open_app(\"Chrome\")]"',
+        '  Response: "Opening. [ACTION:open_app(\"Chrome\")]"',
         "",
         '  User: "Play Bohemian Rhapsody on YouTube"',
-        '  Response: "On it. [ACTION:play_youtube(\"Bohemian Rhapsody\")]"',
+        '  Response: "Playing. [ACTION:play_youtube(\"Bohemian Rhapsody\")]"',
         "",
         '  User: "How much RAM am I using?"',
-        '  Response: "[ACTION:system_info()] Let me check that for you."',
+        '  Response: "[ACTION:system_info()]"',
         "",
-        '  User: "Search for Python tutorials"',
-        '  Response: "Searching. [ACTION:search_web(\"Python tutorials\")]"',
+        '  User: "Check git status of my Airbnb project"',
+        '  Response: "[ACTION:git_status(\"Airbnb Clone\")]"',
+        "",
+        '  User: "What\'s on my desktop?"',
+        '  Response: "[ACTION:list_desktop()]"',
         "",
         '  User: "Mute the volume"',
         '  Response: "Done. [ACTION:volume_control(\"mute\")]"',
         "",
-        '  User: "Open the resume file on my desktop"',
-        '  Response: "Opening that. [ACTION:open_file(\"resume\")]"',
-        "",
-        '  User: "Read my notes.txt file"',
-        '  Response: "[ACTION:read_file(\"notes.txt\")] Here is what it says..."',
-        "",
-        '  User: "Write a to-do list to a file"',
-        '  Response: "Saved to your Desktop. [ACTION:write_file(\"todo.txt\", \"1. Buy groceries\\n2. Call dentist\")]"',
+        '  User: "Open the resume file"',
+        '  Response: "Opening. [ACTION:open_file(\"resume\")]"',
     ])
 
     return "\n".join(lines)

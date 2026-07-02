@@ -13,7 +13,6 @@ from app.models import ChatMessage, ChatHistory
 from app.services.groq_service import GroqService
 from app.services.realtime_service import RealtimeGroqService
 from app.services.brain_service import BrainService
-from app.services.emotional_service import emotional_intelligence, get_emotional_state
 from app.utils.key_rotation import get_next_key_pair
 
 logger = logging.getLogger("J.A.R.V.I.S")

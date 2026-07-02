@@ -47,3 +47,19 @@ PyPDF2>=3.0.0
 python-pptx>=0.6.21
 python-docx>=1.0.0
 
+# Added for Bug Fixes & PC Automation Enhancements
+pycaw>=2023.4.7
+comtypes>=1.2.0
+pygetwindow>=0.0.9
+groq>=0.5.0
+
+# Integrations (webhooks, email, Notion)
+aiohttp>=3.8.0
+aiosmtplib>=2.0.0
+notion-client>=2.0.0
+
+# Browser automation (Playwright)
+playwright>=1.40.0
+
+# Telegram bot integration
+python-telegram-bot>=21.0
