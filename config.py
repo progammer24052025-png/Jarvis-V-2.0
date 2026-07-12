@@ -56,6 +56,7 @@ LEARNING_DATA_DIR = BASE_DIR / "database" / "learning_data"
 CHATS_DATA_DIR = BASE_DIR / "database" / "chats_data"
 VECTOR_STORE_DIR = BASE_DIR / "database" / "vector_store"
 APP_STATE_DIR = BASE_DIR / "database" / "app_state"
+CUSTOM_ACTIONS_DIR = BASE_DIR / "database" / "custom_actions"
 
 # Create directories if they don't exist so the app can run without manual setup.
 # parents=True creates parent folders; exist_ok=True avoids error if already present.
@@ -63,6 +64,7 @@ LEARNING_DATA_DIR.mkdir(parents=True, exist_ok=True)
 CHATS_DATA_DIR.mkdir(parents=True, exist_ok=True)
 VECTOR_STORE_DIR.mkdir(parents=True, exist_ok=True)
 APP_STATE_DIR.mkdir(parents=True, exist_ok=True)
+CUSTOM_ACTIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ============================================================================
 # GROQ API CONFIGURATION
@@ -166,6 +168,42 @@ ASSISTANT_NAME = (os.getenv("ASSISTANT_NAME", "").strip() or "Jarvis")
 JARVIS_USER_TITLE = os.getenv("JARVIS_USER_TITLE", "").strip()
 JARVIS_OWNER_NAME = os.getenv("JARVIS_OWNER_NAME", "").strip()
 BOSS_NAME = os.getenv("BOSS_NAME", "boss").strip() or "boss"
+
+# ==============================================================================
+# PHASE 0 PLATFORM SETTINGS
+# ==============================================================================
+# These control the new platform modules introduced in Phase 0.
+
+# Mock devices: register simulated Android + ESP32 glasses for testing.
+# Set to "false" to disable when real devices are connected.
+MOCK_DEVICES_ENABLED = os.getenv("MOCK_DEVICES_ENABLED", "true").strip().lower() in ("true", "1", "yes")
+
+# Device heartbeat timeout (seconds). Devices that don't heartbeat within
+# this window are marked offline by the DeviceManager.
+DEVICE_HEARTBEAT_TIMEOUT = int(os.getenv("DEVICE_HEARTBEAT_TIMEOUT", "60"))
+
+# Regex brain classifier: enable/disable the fast regex path before LLM.
+REGEX_BRAIN_ENABLED = os.getenv("REGEX_BRAIN_ENABLED", "true").strip().lower() in ("true", "1", "yes")
+
+# Tool cache: global enable/disable. When disabled, no tool results are cached.
+TOOL_CACHE_ENABLED = os.getenv("TOOL_CACHE_ENABLED", "true").strip().lower() in ("true", "1", "yes")
+
+# Event bus: maximum events kept in the ring buffer for /api/events debugging.
+EVENT_BUS_MAX_HISTORY = int(os.getenv("EVENT_BUS_MAX_HISTORY", "200"))
+
+# ==============================================================================
+# CUSTOM ACTION ENGINE (Runtime Feature Creation)
+# ==============================================================================
+# Enable/disable the custom action engine. When disabled, runtime tool creation
+# is turned off and existing custom actions are not loaded.
+CUSTOM_ACTIONS_ENABLED = os.getenv("CUSTOM_ACTIONS_ENABLED", "true").strip().lower() in ("true", "1", "yes")
+
+# Current user ID. In single-user mode this is the only user. When multi-user
+# auth is added, swap this from env to the authenticated user's ID.
+CURRENT_USER_ID = os.getenv("CURRENT_USER_ID", "default_user").strip() or "default_user"
+
+# Rate limit: max new custom actions per minute per user (prevents spam).
+CUSTOM_ACTIONS_RATE_LIMIT = int(os.getenv("CUSTOM_ACTIONS_RATE_LIMIT", "5"))
 
 # CORS — defaults to localhost only; override with CORS_ORIGINS=* or comma-separated origins.
 _cors_raw = os.getenv("CORS_ORIGINS", "").strip()

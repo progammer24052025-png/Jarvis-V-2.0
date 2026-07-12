@@ -259,12 +259,17 @@ class RealtimeGroqService(GroqService):
         formatted_results: Optional[str] = None,
         payload: Optional[dict] = None,
         key_start_index: int = 0,
+        extra_system_parts: Optional[List[str]] = None,
     ) -> Iterator[Any]:
         try:
-            extra_parts = [escape_curly_braces(formatted_results)] if formatted_results else None
+            extra_parts = []
+            if formatted_results:
+                extra_parts.append(escape_curly_braces(formatted_results))
+            if extra_system_parts:
+                extra_parts.extend(extra_system_parts)
             prompt, messages = self._build_prompt_and_messages(
                 question, chat_history,
-                extra_system_parts=extra_parts,
+                extra_system_parts=extra_parts or None,
                 mode_addendum=REALTIME_CHAT_ADDENDUM,
             )
             yield from self._stream_llm(prompt, messages, question, key_start_index=key_start_index)

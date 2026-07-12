@@ -201,6 +201,85 @@ const settingTtsRate     = $('setting-tts-rate');           // Personalization: 
 const settingsSaveBtn    = $('settings-save-btn');          // Save personalization settings
 
 /* ================================================================
+   STATUS PILL — Floating processing state indicator
+   ================================================================
+   Shows a typewriter-animated label above the chat when JARVIS is
+   processing a slow request (searching web, creating feature, etc.).
+   Hidden automatically when the first response chunk arrives.
+   Only appears for tasks taking >500ms to avoid flicker on fast replies.
+   ================================================================ */
+
+// Create the pill element dynamically and insert before chat-messages
+const statusPill = document.createElement('div');
+statusPill.id = 'status-pill';
+if (chatMessages && chatMessages.parentNode) {
+    chatMessages.parentNode.insertBefore(statusPill, chatMessages);
+}
+
+// Typewriter animation state
+let _pillTypeTimer   = null;   // setInterval ID for character-by-character typing
+let _pillShowTimer   = null;   // setTimeout ID for the 500ms delay gate
+let _pillStateCount  = 0;      // track how many states shown in current request
+
+// Map backend _activity events to pill labels
+// null = hide pill (or don't show), string = show that label
+const STATUS_PILL_LABELS = {
+    query_detected:    null,   // too fast — skip
+    decision:          'ANALYZING',
+    routing:           null,   // too fast — skip
+    searching_web:     'SEARCHING OFFICIAL SOURCES',
+    extracting_query:  'EXTRACTING QUERY',
+    creating_feature:  'CREATING NEW CAPABILITY',
+    streaming_started: null,   // signal to hide
+    first_chunk:       null,   // signal to hide
+    tool_executed:     null,   // too fast — skip
+};
+
+/**
+ * showStatusPill(text) — Show the pill after 500ms gate, then typewriter the text.
+ * The 500ms delay ensures fast responses never show the pill at all.
+ */
+function showStatusPill(text) {
+    clearTimeout(_pillShowTimer);
+    clearInterval(_pillTypeTimer);
+    _pillShowTimer = setTimeout(() => {
+        _pillStateCount++;
+        if (_pillStateCount > 3) return;  // cap at 3 states to avoid flicker
+        statusPill.innerHTML = '<span class="pill-dot"></span><span class="pill-text"></span>';
+        statusPill.classList.add('visible');
+        // Typewriter: type characters one by one
+        const textEl = statusPill.querySelector('.pill-text');
+        let i = 0;
+        _pillTypeTimer = setInterval(() => {
+            if (i < text.length) {
+                textEl.textContent += text[i];
+                i++;
+            } else {
+                clearInterval(_pillTypeTimer);
+            }
+        }, 30);
+    }, 500);
+}
+
+/**
+ * hideStatusPill() — Fade out and hide the status pill immediately.
+ */
+function hideStatusPill() {
+    clearTimeout(_pillShowTimer);
+    clearInterval(_pillTypeTimer);
+    statusPill.classList.remove('visible');
+    _pillStateCount = 0;
+}
+
+/**
+ * resetPillState() — Called at the start of each new request to reset the state counter.
+ */
+function resetPillState() {
+    _pillStateCount = 0;
+    hideStatusPill();
+}
+
+/* ================================================================
    PRE-STARTER PLAYER (Dedicated — never interrupted by TTS reset)
    ================================================================
    Plays one random pre-generated clip ("Oh wait.", etc.) on its own
@@ -2444,6 +2523,9 @@ async function sendMessage(textOverride) {
         if (activityPanel && settings.autoOpenActivity) { activityPanel.classList.add('open'); updatePanelOverlay(); }
     }
 
+    // Reset status pill for this new request
+    resetPillState();
+
     let firstChunkReceived = false;
     let timeoutId = null;
     const controller = new AbortController();
@@ -2519,6 +2601,13 @@ async function sendMessage(textOverride) {
                         appendActivity(data.activity);
                         if (activityToggle) activityToggle.style.display = '';
                         if (activityPanel && settings.autoOpenActivity) { activityPanel.classList.add('open'); updatePanelOverlay(); }
+                        // Update status pill based on activity event
+                        const pillLabel = STATUS_PILL_LABELS[data.activity.event];
+                        if (pillLabel) {
+                            showStatusPill(pillLabel);
+                        } else if (data.activity.event === 'streaming_started' || data.activity.event === 'first_chunk') {
+                            hideStatusPill();
+                        }
                     }
 
                     // SEARCH RESULTS — Tavily data (realtime only): show in right-side widget and reveal toggle
@@ -2535,6 +2624,7 @@ async function sendMessage(textOverride) {
                         // has chunk: "" for session_id; that would wrongly reset
                         if (chunkText && !firstChunkReceived) {
                             firstChunkReceived = true;
+                            hideStatusPill();   // Response started — hide the status pill
                             if (ttsPlayer) ttsPlayer.reset();   // Stop pre-starter, play main immediately
                         }
                         fullResponse += chunkText;

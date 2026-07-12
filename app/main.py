@@ -1,5 +1,5 @@
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Request as FastAPIRequest
+from fastapi import FastAPI, HTTPException, Request as FastAPIRequest, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import StreamingResponse, RedirectResponse
@@ -42,9 +42,9 @@ from app.services.realtime_service import RealtimeGroqService
 from app.services.chat_service import ChatService
 from app.services.brain_service import BrainService
 from config import (
-    VECTOR_STORE_DIR, GROQ_API_KEYS, GROQ_MODEL, TAVILY_API_KEY,
+    GROQ_API_KEYS, GROQ_MODEL, TAVILY_API_KEY,
     EMBEDDING_MODEL, CHUNK_SIZE, CHUNK_OVERLAP, MAX_CHAT_HISTORY_TURNS,
-    ASSISTANT_NAME, TTS_VOICE, TTS_RATE, CORS_ORIGINS, APP_STATE_DIR,
+    ASSISTANT_NAME, CORS_ORIGINS, APP_STATE_DIR,
 )
 
 # ── Simple in-memory rate limiter (no external dependency) ──
@@ -146,7 +146,6 @@ def _save_app_state():
 def _load_app_state():
     """Load persisted state dicts from disk into memory."""
     global reminders_db, webhooks_db, uploaded_files_db
-    global email_config, notion_config, calendar_config, slack_config
 
     filepath = APP_STATE_DIR / "app_state.json"
     if not filepath.exists():
@@ -330,7 +329,7 @@ def print_title():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global vector_store_service, groq_service, realtime_service, brain_service, chat_service, _reminder_task, _health_task, _shutdown_check_task
+    global vector_store_service, groq_service, realtime_service, brain_service, chat_service, _reminder_task, _shutdown_check_task
 
     print_title()
     logger.info("=" * 60)
@@ -368,7 +367,8 @@ async def lifespan(app: FastAPI):
         logger.info("Brain service initialized successfully")
 
         logger.info("Initializing chat service...")
-        chat_service = ChatService(groq_service, realtime_service, brain_service)
+        from app.services.context_engine import context_engine as _ctx_engine
+        chat_service = ChatService(groq_service, realtime_service, brain_service, context_engine=_ctx_engine)
         logger.info("Chat service initialized successfully")
 
         # Start reminder Background task
@@ -387,6 +387,64 @@ async def lifespan(app: FastAPI):
         _shutdown_check_task = asyncio.create_task(_check_shutdown_flag())
         logger.info("Shutdown flag checker started")
 
+        # --- Phase 0 Platform Modules ---
+        logger.info("Initializing Phase 0 platform modules...")
+
+        # Tool Registry: load all local tools into the universal schema
+        from app.services.tools.tool_schema import tool_registry
+        from app.services.tools.tool_executor import REQUIRES_CONFIRMATION
+        tool_registry.load_from_system_tools(REQUIRES_CONFIRMATION)
+        logger.info("[PLATFORM] Tool Registry: %d tools loaded", len(tool_registry.all_tools()))
+
+        # App Inventory: scan registry + Start Menu for installed apps
+        try:
+            from app.services.tools.system_tools import _get_inventory
+            _app_count = len(_get_inventory())
+            logger.info("[PLATFORM] App Inventory: %d apps indexed", _app_count)
+        except Exception as e:
+            _app_count = 0
+            logger.warning("[PLATFORM] App Inventory scan failed: %s", e)
+
+        # Action Manager: wire up the executor
+        from app.services.action_manager import action_manager
+        from app.services.tools.tool_executor import execute_action
+        action_manager.set_executor(execute_action)
+        logger.info("[PLATFORM] Action Manager: executor wired")
+
+        # Context Engine: wire up device manager and emotional service
+        from app.services.context_engine import context_engine
+        from app.services.device_manager import device_manager
+        context_engine.set_device_manager(device_manager)
+        try:
+            from app.services.emotional_service import emotional_intelligence
+            context_engine.set_emotional_service(emotional_intelligence)
+        except Exception:
+            pass  # emotional service is optional
+        logger.info("[PLATFORM] Context Engine: wired")
+
+        # Mock connectors: register simulated devices for testing
+        import os as _os
+        if _os.getenv("MOCK_DEVICES_ENABLED", "true").lower() in ("true", "1", "yes"):
+            try:
+                from app.connectors.mock_android import start_mock_android
+                from app.connectors.mock_glasses import start_mock_glasses
+                start_mock_android()
+                start_mock_glasses()
+                logger.info("[PLATFORM] Mock devices: Android + Glasses registered")
+            except Exception as e:
+                logger.warning("[PLATFORM] Mock devices failed to start: %s", e)
+
+        # Custom Action Engine: load persisted user-created tools
+        if _os.getenv("CUSTOM_ACTIONS_ENABLED", "true").lower() in ("true", "1", "yes"):
+            try:
+                from app.services.tools.custom_action_manager import custom_action_manager
+                from config import CURRENT_USER_ID
+                _loaded = custom_action_manager.load_actions(CURRENT_USER_ID)
+                _custom_count = tool_registry.load_custom_tools(CURRENT_USER_ID)
+                logger.info("[PLATFORM] Custom Action Engine: %d actions loaded for user '%s'", _loaded, CURRENT_USER_ID)
+            except Exception as e:
+                logger.warning("[PLATFORM] Custom Action Engine failed to start: %s", e)
+
         logger.info("=" * 60)
         logger.info("Service Status:")
         logger.info("  - Vector Store: Ready")
@@ -396,10 +454,19 @@ async def lifespan(app: FastAPI):
         logger.info("  - Chat Service: Ready")
         logger.info("  - Reminder Service: Ready")
         logger.info("  - Health Monitor: Ready")
+        logger.info("  - Tool Registry: %d tools", len(tool_registry.all_tools()))
+        logger.info("  - Device Manager: %d devices", device_manager.get_device_count())
+        logger.info("  - Action Manager: Ready")
+        logger.info("  - Context Engine: Ready")
+        logger.info("  - Event Bus: Active")
+        logger.info("  - Tool Cache: Active")
+        logger.info("  - Custom Action Engine: %d tools", _custom_count if 'CUSTOM_ACTIONS_ENABLED' in dir() and _os.getenv('CUSTOM_ACTIONS_ENABLED', 'true').lower() in ('true', '1', 'yes') else 0)
+        logger.info("  - App Inventory: %d apps", _app_count)
         logger.info("=" * 60)
         logger.info("J.A.R.V.I.S is online and ready!")
         logger.info("API: http://localhost:8000")
         logger.info("Frontend: http://localhost:8000/app/ (open in browser)")
+        logger.info("Platform Status: http://localhost:8000/api/platform/status")
         logger.info("=" * 60)
 
         yield
@@ -416,13 +483,23 @@ async def lifespan(app: FastAPI):
         from app.services.health_service import get_health_monitor
         get_health_monitor().stop()
 
-        # Cancel shutdown checker
+        # Stop shutdown checker
         if _shutdown_check_task:
             _shutdown_check_task.cancel()
             try:
                 await _shutdown_check_task
             except asyncio.CancelledError:
                 pass
+
+        # Stop mock connectors
+        try:
+            from app.connectors.mock_android import stop_mock_android
+            from app.connectors.mock_glasses import stop_mock_glasses
+            stop_mock_android()
+            stop_mock_glasses()
+            logger.info("Mock devices stopped")
+        except Exception:
+            pass
 
         logger.info("\nShutting down J.A.R.V.I.S...")
         _tts_pool.shutdown(wait = True)
@@ -587,7 +664,6 @@ def _generate_tts_sync(text: str, voice: str, rate: str) -> bytes:
 _tts_pool = ThreadPoolExecutor(max_workers=4)
 
 def _stream_generator(session_id: str, chunk_iter, is_realtime: bool, tts_enabled: bool = False):
-    global _jarvis_shutting_down
     yield f"data: {json.dumps({'session_id': session_id, 'chunk': '', 'done': False})}\n\n"
 
     buffer = ""
@@ -714,6 +790,105 @@ def _stream_generator(session_id: str, chunk_iter, is_realtime: bool, tts_enable
 
         except Exception as e:
             logger.warning("[TOOL-RESULT] Error sending results: %s", e, exc_info=True)
+
+    # --- Process [CREATE_TOOL:...] tags (Runtime Feature Creation) ---
+    create_tool_results = []
+    try:
+        create_pattern = re.compile(r'\[CREATE_TOOL:(.*?)\]', re.DOTALL)
+        create_matches = create_pattern.findall(full_text)
+        if create_matches:
+            from app.services.tools.action_builder import action_builder
+            from app.services.tools.custom_action_manager import custom_action_manager
+            from app.services.tools.tool_schema import tool_registry
+            from config import CURRENT_USER_ID
+
+            for request_desc in create_matches:
+                request_desc = request_desc.strip()
+                if not request_desc:
+                    continue
+
+                logger.info("[CREATE-TOOL] LLM requested tool creation: %s", request_desc[:80])
+                yield f"data: {json.dumps({'activity': {'event': 'creating_feature', 'label': 'CREATING NEW CAPABILITY'}})}\n\n"
+
+                # Get existing tool names so LLM doesn't duplicate
+                existing_tools = list(tool_registry.all_tools().keys())
+
+                # Ask LLM to generate the action definition
+                action_def = action_builder.build_action_from_request(request_desc, existing_tools)
+                if not action_def:
+                    result_msg = f"Could not create a tool for: {request_desc}"
+                    create_tool_results.append({"request": request_desc, "result": result_msg})
+                    continue
+
+                # Validate for safety
+                is_safe, reason = action_builder.validate_action(action_def)
+                if not is_safe:
+                    result_msg = f"Cannot create '{action_def.get('name', 'tool')}': {reason}"
+                    create_tool_results.append({"request": request_desc, "result": result_msg})
+                    continue
+
+                # Create and persist the action
+                success, msg = custom_action_manager.create_action(CURRENT_USER_ID, action_def)
+                if not success:
+                    create_tool_results.append({"request": request_desc, "result": msg})
+                    continue
+
+                # Register in the tool registry so LLM knows about it next time
+                tool_registry.register_custom_action(action_def)
+
+                # Execute the newly created action immediately
+                tool_name = action_def.get("name", "")
+                exec_result = custom_action_manager.execute_action(tool_name, [])
+                logger.info("[CREATE-TOOL] Created and executed '%s': %s", tool_name, str(exec_result)[:100])
+
+                create_tool_results.append({
+                    "request": request_desc,
+                    "tool": tool_name,
+                    "result": exec_result,
+                })
+
+            # Strip [CREATE_TOOL:...] tags from the displayed text
+            cleaned_text = create_pattern.sub("", full_text).strip()
+            if chat_service.sessions.get(session_id):
+                chat_service.sessions[session_id][-1].content = cleaned_text
+
+    except Exception as e:
+        logger.warning("[CREATE-TOOL] Error: %s", e, exc_info=True)
+
+    # Send create-tool results to the user
+    if create_tool_results:
+        try:
+            result_parts = []
+            for ctr in create_tool_results:
+                result_parts.append(ctr.get("result", "Done."))
+            direct_text = "\n\n".join(result_parts)
+
+            if direct_text.strip():
+                chunk_size = 40
+                for i in range(0, len(direct_text), chunk_size):
+                    piece = direct_text[i:i + chunk_size]
+                    yield f"data: {json.dumps({'chunk': piece, 'done': False})}\n\n"
+
+                # Update session with results
+                if chat_service.sessions.get(session_id):
+                    current_content = chat_service.sessions[session_id][-1].content or ""
+                    chat_service.sessions[session_id][-1].content = current_content + "\n\n" + direct_text
+                    chat_service.save_chat_session(session_id)
+
+                # Emit tool_executed activity events
+                for ctr in create_tool_results:
+                    yield f"data: {json.dumps({'activity': {'event': 'tool_executed', 'tool': ctr.get('tool', 'new_tool'), 'result': ctr.get('result', 'Created')}})}\n\n"
+
+                if tts_enabled:
+                    try:
+                        _submit(direct_text)
+                    except Exception as tts_err:
+                        logger.warning("[CREATE-TOOL-TTS] Error: %s", tts_err)
+
+                logger.info("[CREATE-TOOL-RESULT] Sent %d chars to user", len(direct_text))
+
+        except Exception as e:
+            logger.warning("[CREATE-TOOL-RESULT] Error: %s", e, exc_info=True)
 
     if tts_enabled:
         remaining = buffer.strip()
@@ -1913,7 +2088,6 @@ async def calendar_auth():
     if not GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=400, detail="Google OAuth not configured. Set GOOGLE_CLIENT_ID environment variable.")
     
-    import urllib.parse
     scopes = ["https://www.googleapis.com/auth/calendar.readonly", "https://www.googleapis.com/auth/calendar.events"]
     auth_url = f"https://accounts.google.com/o/oauth2/v2/auth?client_id={GOOGLE_CLIENT_ID}&redirect_uri={GOOGLE_REDIRECT_URI}&response_type=code&scope={'+'.join(scopes)}&access_type=offline&prompt=consent"
     
@@ -2172,6 +2346,265 @@ async def text_to_speech(request_body: TTSRequest):
         media_type="audio/mpeg",
         headers={"Cache-Control": "no-cache"},
     )
+
+# =============================================================================
+# DEVICE WEBSOCKET ENDPOINT
+# =============================================================================
+# Real devices (Android app, ESP32 glasses) connect here.
+# Each device registers with DeviceManager and can receive tool calls.
+
+from app.services.device_manager import device_manager, DeviceSession
+
+_active_device_websockets: dict = {}  # device_id -> WebSocket
+
+
+@app.websocket("/ws/device/{device_id}")
+async def device_websocket(websocket: WebSocket, device_id: str):
+    """
+    WebSocket endpoint for device connections.
+    Protocol:
+      1. Device connects -> registers with DeviceManager
+      2. Device sends heartbeat every N seconds
+      3. Server can send tool commands
+      4. Device executes and returns result
+    Message types (client -> server):
+      {"type": "register", "device_type": "android", "capabilities": [...], "metadata": {...}}
+      {"type": "heartbeat", "battery": 78, "network": "wifi"}
+      {"type": "tool_result", "request_id": "abc", "result": "..."}
+      {"type": "unregister"}
+    Message types (server -> client):
+      {"type": "tool_call", "request_id": "abc", "tool": "...", "params": {...}}
+      {"type": "ack", "device_id": "..."}
+      {"type": "ping"}
+    """
+    await websocket.accept()
+    device = None
+    logger.info("[WS-DEVICE] %s connected", device_id)
+
+    try:
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                msg = json.loads(raw)
+            except json.JSONDecodeError:
+                await websocket.send_json({"type": "error", "detail": "Invalid JSON"})
+                continue
+
+            msg_type = msg.get("type", "")
+
+            if msg_type == "register":
+                device = DeviceSession(
+                    device_id=device_id,
+                    device_type=msg.get("device_type", "unknown"),
+                    capabilities=msg.get("capabilities", []),
+                    permissions=msg.get("permissions", {}),
+                    battery=msg.get("battery"),
+                    network=msg.get("network", "unknown"),
+                    status="online",
+                    metadata=msg.get("metadata", {}),
+                    websocket=websocket,
+                )
+                device_manager.register(device)
+                _active_device_websockets[device_id] = websocket
+                await websocket.send_json({"type": "ack", "device_id": device_id})
+                logger.info("[WS-DEVICE] %s registered: type=%s caps=%s",
+                            device_id, device.device_type, device.capabilities)
+
+            elif msg_type == "heartbeat":
+                if device:
+                    device_manager.heartbeat(
+                        device_id,
+                        battery=msg.get("battery"),
+                        network=msg.get("network"),
+                    )
+
+            elif msg_type == "tool_result":
+                # Future: route result back to pending action
+                request_id = msg.get("request_id", "")
+                result = msg.get("result", "")
+                logger.info("[WS-DEVICE] Tool result from %s (req %s): %s",
+                            device_id, request_id, str(result)[:100])
+
+            elif msg_type == "unregister":
+                break
+
+            else:
+                await websocket.send_json({"type": "error", "detail": f"Unknown type: {msg_type}"})
+
+    except WebSocketDisconnect:
+        logger.info("[WS-DEVICE] %s disconnected", device_id)
+    except Exception as e:
+        logger.error("[WS-DEVICE] %s error: %s", device_id, e)
+    finally:
+        if device_id in _active_device_websockets:
+            del _active_device_websockets[device_id]
+        device_manager.unregister(device_id)
+        logger.info("[WS-DEVICE] %s cleaned up", device_id)
+
+
+# =============================================================================
+# DEVELOPER CONSOLE REST APIs
+# =============================================================================
+# These endpoints power the Developer Console (debug dashboard).
+# They expose internal state: events, devices, tools, tasks, cache, context.
+
+@app.get("/api/devices")
+async def api_devices():
+    """List all connected devices."""
+    return {"devices": device_manager.to_api_list(), "count": device_manager.get_device_count()}
+
+
+@app.get("/api/devices/online")
+async def api_devices_online():
+    """List only online devices."""
+    devices = device_manager.get_online_devices()
+    return {"devices": [d.to_dict() for d in devices], "count": len(devices)}
+
+
+@app.get("/api/tools")
+async def api_tools():
+    """List all registered tools with full schema."""
+    from app.services.tools.tool_schema import tool_registry
+    return {"tools": tool_registry.to_api_list(), "count": len(tool_registry.all_tools())}
+
+
+@app.get("/api/events")
+async def api_events(limit: int = 50, type: str = None):
+    """Get recent events from the event bus."""
+    from app.services.event_bus import event_bus
+    events = event_bus.recent_events(limit=limit, event_type=type)
+    return {"events": events, "stats": event_bus.stats()}
+
+
+@app.get("/api/cache")
+async def api_cache():
+    """Get tool cache statistics."""
+    from app.services.tools.tool_cache import tool_cache
+    return tool_cache.stats()
+
+
+@app.post("/api/cache/clear")
+async def api_cache_clear():
+    """Clear the tool cache."""
+    from app.services.tools.tool_cache import tool_cache
+    cleared = tool_cache.clear()
+    return {"status": "ok", "cleared": cleared}
+
+
+@app.get("/api/tasks")
+async def api_tasks(limit: int = 50):
+    """List recent tasks from the action manager."""
+    from app.services.action_manager import action_manager
+    return {"tasks": action_manager.to_api_list(limit=limit)}
+
+
+@app.get("/api/tasks/active")
+async def api_tasks_active():
+    """List currently active (pending/running) tasks."""
+    from app.services.action_manager import action_manager
+    tasks = action_manager.get_active_tasks()
+    return {"tasks": [t.to_dict() for t in tasks], "count": len(tasks)}
+
+
+@app.post("/api/tasks/cancel/{task_id}")
+async def api_task_cancel(task_id: str):
+    """Cancel a running task."""
+    from app.services.action_manager import action_manager
+    ok = action_manager.cancel_task(task_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    return {"status": "cancelled", "task_id": task_id}
+
+
+@app.get("/api/context")
+async def api_context():
+    """Get the current context snapshot."""
+    from app.services.context_engine import context_engine
+    ctx = context_engine.build_context()
+    return ctx
+
+
+@app.get("/api/platform/status")
+async def api_platform_status():
+    """Full platform status overview."""
+    from app.services.tools.tool_schema import tool_registry
+    from app.services.tools.tool_cache import tool_cache
+    from app.services.event_bus import event_bus
+    from app.services.action_manager import action_manager
+    from app.services.context_engine import context_engine
+
+    return {
+        "platform": "JARVIS Phase 0",
+        "version": "0.1.0",
+        "services": {
+            "vector_store": vector_store_service is not None,
+            "groq_general": groq_service is not None,
+            "groq_realtime": realtime_service is not None,
+            "brain": brain_service is not None,
+            "chat": chat_service is not None,
+        },
+        "tools": {
+            "total": len(tool_registry.all_tools()),
+            "local": len(tool_registry.local_tools()),
+            "remote": len(tool_registry.remote_tools()),
+            "custom": len(tool_registry.custom_tools()),
+        },
+        "cache": tool_cache.stats(),
+        "events": event_bus.stats(),
+        "devices": {
+            "total": device_manager.get_device_count(),
+            "online": len(device_manager.get_online_devices()),
+        },
+        "tasks": {
+            "active": len(action_manager.get_active_tasks()),
+        },
+    }
+
+
+# ==============================================================================
+# CUSTOM ACTION ENGINE APIs
+# ==============================================================================
+
+@app.get("/api/custom-actions")
+async def api_list_custom_actions():
+    """List all custom actions for the current user."""
+    from app.services.tools.custom_action_manager import custom_action_manager
+    from config import CURRENT_USER_ID
+    actions = custom_action_manager.get_all_actions(CURRENT_USER_ID)
+    return {"user_id": CURRENT_USER_ID, "count": len(actions), "actions": actions}
+
+
+@app.delete("/api/custom-actions/{action_name}")
+async def api_delete_custom_action(action_name: str):
+    """Delete a custom action permanently."""
+    from app.services.tools.custom_action_manager import custom_action_manager
+    from app.services.tools.tool_schema import tool_registry
+    from config import CURRENT_USER_ID
+
+    success, msg = custom_action_manager.delete_action(CURRENT_USER_ID, action_name)
+    if success:
+        tool_registry.unregister(action_name)
+        return {"success": True, "message": msg}
+    else:
+        raise HTTPException(status_code=404, detail=msg)
+
+
+@app.post("/api/custom-actions/test")
+async def api_test_custom_action(request: dict):
+    """Dry-run a custom action without persisting it."""
+    from app.services.tools.custom_action_manager import custom_action_manager
+    action_name = request.get("name", "")
+    params = request.get("params", [])
+    if not action_name:
+        raise HTTPException(status_code=400, detail="Action name is required.")
+
+    action_def = custom_action_manager.get_action(action_name)
+    if not action_def:
+        raise HTTPException(status_code=404, detail=f"Action '{action_name}' not found.")
+
+    result = custom_action_manager.execute_action(action_name, params)
+    return {"action": action_name, "result": result}
+
 
 _frontend_dir = Path(__file__).resolve().parent.parent / "frontend"
 if _frontend_dir.exists():

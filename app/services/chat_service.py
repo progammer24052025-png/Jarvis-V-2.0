@@ -27,10 +27,12 @@ class ChatService:
         groq_service: GroqService,
         realtime_service: RealtimeGroqService = None,
         brain_service: BrainService = None,
+        context_engine=None,
     ):
         self.groq_service = groq_service
         self.realtime_service = realtime_service
         self.brain_service = brain_service
+        self.context_engine = context_engine
         self.sessions: OrderedDict[str, List[ChatMessage]] = OrderedDict()
         self._session_lock = threading.RLock()  # Protects self.sessions
         self._save_lock = threading.Lock()
@@ -294,6 +296,18 @@ class ChatService:
 
         logger.info("[JARVIS] Brain: %s in %d ms — %s", query_type, brain_elapsed_ms, reasoning)
 
+        # --- Build context from Context Engine (if available) ---
+        context_parts = []
+        if self.context_engine:
+            try:
+                ctx = self.context_engine.build_context()
+                ctx_prompt = self.context_engine.format_for_prompt(ctx)
+                context_parts.append(ctx_prompt)
+                logger.info("[JARVIS] Context engine: %d connected devices, %s",
+                            ctx.get('device_count', 0), ctx.get('time_of_day', ''))
+            except Exception as e:
+                logger.warning("[JARVIS] Context engine failed: %s", e)
+
         yield {"_activity": {"event": "decision", "query_type": query_type, "reasoning": reasoning, "elapsed_ms": brain_elapsed_ms}}
         yield {"_activity": {"event": "routing", "route": query_type}}
         if query_type == "realtime" and search_payload:
@@ -305,7 +319,9 @@ class ChatService:
         try:
             if query_type == "general":
                 stream = self.groq_service.stream_response(
-                    question=user_message, chat_history=chat_history, key_start_index=chat_idx
+                    question=user_message, chat_history=chat_history,
+                    key_start_index=chat_idx,
+                    extra_system_parts=context_parts or None,
                 )
             else:
                 if not self.realtime_service:
@@ -316,6 +332,7 @@ class ChatService:
                     formatted_results=formatted_results,
                     payload=search_payload,
                     key_start_index=chat_idx,
+                    extra_system_parts=context_parts or None,
                 )
 
             for chunk in stream:

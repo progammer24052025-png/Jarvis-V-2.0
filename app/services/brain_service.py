@@ -14,6 +14,94 @@ REASONING_GENERAL = "Answerable from knowledge and context"
 REASONING_REALTIME = "Needs live web search"
 REASONING_DEFAULT = "Brain unavailable; defaulting to realtime"
 REASONING_UNCLEAR = "Unclear; defaulting to realtime"
+REASONING_REGEX = "Regex classifier (fast path)"
+
+# ---------------------------------------------------------------------------
+# Regex-based fast classifier
+# ---------------------------------------------------------------------------
+# Patterns that confidently map to "general" (no web search needed).
+# If matched, returns in ~1-5ms instead of 200-500ms LLM call.
+# Only matches when confidence is very high; ambiguous cases fall through
+# to the LLM brain.
+
+_REGEX_GENERAL_PATTERNS: List[Tuple[re.Pattern, str]] = [
+    # Greetings
+    (re.compile(r"^(hi|hello|hey|howdy|good\s*(morning|afternoon|evening|night)|sup|yo|hola|namaste)\b", re.I), "greeting"),
+    # Goodbye
+    (re.compile(r"^(bye|goodbye|good\s*night|see\s*you|take\s*care|later|cya|jarvis\s*bye|exit\s*jarvis|good\s*bye)\b", re.I), "farewell"),
+    # Thanks
+    (re.compile(r"^(thanks|thank\s*you|thx|ty|appreciate\s*it|cheers)\b", re.I), "thanks"),
+    # Time / date
+    (re.compile(r"(what('?s|\s+is)\s+the\s+time|current\s+time|what\s+time\s+is\s+it|today'?s?\s+date|what\s+day\s+is\s+it|what'?s\s+the\s+date)", re.I), "time_date"),
+    # Open app / launch
+    (re.compile(r"^(open|launch|start|run)\s+\S+", re.I), "open_app"),
+    # Close app
+    (re.compile(r"^(close|quit|exit|kill|stop|end)\s+\S+", re.I), "close_app"),
+    # System controls
+    (re.compile(r"^(lock|shutdown|restart|sleep|mute|unmute|volume\s+(up|down|\d)|brightness\s+(up|down|\d)|increase\s+(volume|brightness)|decrease\s+(volume|brightness))", re.I), "system_control"),
+    # Media playback
+    (re.compile(r"^(play|pause|skip|next\s+track|previous\s+track|resume)\b", re.I), "media_play"),
+    # YouTube / Spotify
+    (re.compile(r"(play\s+.+\s+on\s+(youtube|spotify)|search\s+(youtube|spotify)\s+for|on\s+youtube)", re.I), "media_platform"),
+    # Screenshot
+    (re.compile(r"(take\s+a?\s*screenshot|screenshot|screen\s*grab|capture\s*(the\s+)?screen)", re.I), "screenshot"),
+    # File operations
+    (re.compile(r"^(create|write|save|make)\s+(a\s+)?(file|note|document|text)", re.I), "file_write"),
+    (re.compile(r"^(read|open|show|view)\s+(the\s+)?(file|document)", re.I), "file_read"),
+    (re.compile(r"^(delete|remove)\s+(the\s+)?(file|folder)", re.I), "file_delete"),
+    # Git commands
+    (re.compile(r"(git\s+(status|log|diff|push|pull|commit|branch|merge|checkout))", re.I), "git_command"),
+    # Reminder
+    (re.compile(r"(set\s+(a\s+)?reminder|remind\s+me|set\s+(a\s+)?alarm|set\s+(a\s+)?timer)", re.I), "reminder"),
+    # System info / PC health
+    (re.compile(r"(system\s*info|pc\s*health|cpu\s*usage|ram\s*usage|disk\s*space|battery\s*(status|level|percentage)|network\s*speed|wifi\s*(info|status|name))", re.I), "system_info"),
+    # Desktop / folder listing
+    (re.compile(r"(what('?s|\s+is)\s+(on|in)\s+(my\s+)?(desktop|folder)|list\s+(the\s+)?(desktop|folder)|show\s+(my\s+)?desktop)", re.I), "list_files"),
+    # Installed apps
+    (re.compile(r"(list\s+(installed|all)\s+apps|what\s+apps\s+(are|do)\s+(installed|do\s+i\s+have))", re.I), "installed_apps"),
+    # Keyboard shortcuts
+    (re.compile(r"(alt\s*tab|switch\s+(window|tab|app)|minimize|maximize|fullscreen)", re.I), "keyboard_nav"),
+    # Browser control
+    (re.compile(r"(new\s+tab|close\s+tab|next\s+tab|previous\s+tab|refresh\s+(the\s+)?page|browser\s+(tab|control))", re.I), "browser_control"),
+    # Generate image
+    (re.compile(r"(generate\s+(an?\s+)?image|create\s+(an?\s+)?image|make\s+(an?\s+)?image|ai\s+image|draw\s+|paint\s+)", re.I), "image_gen"),
+    # Weather (local tool)
+    (re.compile(r"(weather|temperature|forecast|how'?s?\s+the\s+weather)", re.I), "weather"),
+    # Jokes / casual
+    (re.compile(r"(tell\s+(me\s+)?(a\s+)?joke|make\s+me\s+laugh|say\s+something\s+funny)", re.I), "joke"),
+    # Identity questions
+    (re.compile(r"(who\s+are\s+you|what\s+are\s+you|your\s+name|are\s+you\s+(a\s+)?(ai|bot|jarvis)|is\s+your\s+name)", re.I), "identity"),
+    # Yes / No / confirmation
+    (re.compile(r"^(yes|yeah|yep|sure|ok|okay|confirm|no|nope|nah|cancel)\b", re.I), "confirmation"),
+    # How are you
+    (re.compile(r"(how\s+are\s+you|how\s+do\s+you\s+feel|are\s+you\s+(ok|okay|good|well|tired))", re.I), "how_are_you"),
+    # Create folder
+    (re.compile(r"(create\s+(a\s+)?folder|make\s+(a\s+)?folder|new\s+folder)", re.I), "folder_create"),
+    # Move / rename
+    (re.compile(r"(move\s+.+\s+to|rename\s+.+\s+to)", re.I), "file_move_rename"),
+    # Open URL
+    (re.compile(r"(open\s+(url|website|site|link|page)|go\s+to\s+https?://|navigate\s+to)", re.I), "open_url"),
+]
+
+
+def _regex_classify(user_message: str) -> Optional[QueryType]:
+    """
+    Attempt to classify the message using regex patterns only.
+    Returns "general" if a pattern matches confidently, None if uncertain.
+    Never returns "realtime" -- if regex can't determine it, LLM handles it.
+
+    Target: 1-5ms vs 200-500ms LLM call.
+    """
+    msg = user_message.strip()
+    if not msg or len(msg) < 2:
+        return None  # too short to classify
+
+    for pattern, _category in _REGEX_GENERAL_PATTERNS:
+        if pattern.search(msg):
+            logger.debug("[BRAIN-REGEX] Matched pattern '%s' -> general", _category)
+            return "general"
+
+    return None  # uncertain -> fall through to LLM
 
 _BRAIN_SYSTEM_PROMPT = """You are a query classifier for an AI assistant. Your ONLY job is to decide whether a user's message needs LIVE WEB SEARCH or not.
 
@@ -35,6 +123,7 @@ Output ONLY the word. No explanation, no punctuation, no other text."""
 class BrainService:
     def __init__(self):
         self._llms = []
+        self._regex_enabled = True
         if GROQ_API_KEYS:
             try:
                 from langchain_groq import ChatGroq
@@ -60,6 +149,18 @@ class BrainService:
         chat_history: Optional[List[Tuple[str, str]]] = None,
         key_index: int = 0,
     ) -> Tuple[QueryType, str, int]:
+        # --- FAST PATH: Regex classifier (1-5ms) ---
+        if self._regex_enabled:
+            t_regex = time.perf_counter()
+            regex_result = _regex_classify(user_message)
+            regex_ms = int((time.perf_counter() - t_regex) * 1000)
+            if regex_result is not None:
+                logger.info("[BRAIN] Regex classified '%s' as %s in %d ms",
+                            user_message[:60], regex_result, regex_ms)
+                return (regex_result, REASONING_REGEX, regex_ms)
+            logger.debug("[BRAIN] Regex uncertain in %d ms, falling through to LLM", regex_ms)
+
+        # --- SLOW PATH: LLM classifier (200-500ms) ---
         if not self._llms:
             return ("realtime", REASONING_DEFAULT, 0)
         context_lines = []

@@ -1,9 +1,15 @@
 import json
 import hashlib
 import logging
+import os
 from pathlib import Path
 from typing import List, Optional
- 
+
+# Force HuggingFace offline mode to prevent httpx client errors on Python 3.14+.
+# The embedding model is cached locally — no network calls needed at startup.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS

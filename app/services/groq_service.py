@@ -224,10 +224,13 @@ class GroqService:
         question: str,
         chat_history: Optional[List[tuple]] = None,
         key_start_index: int = 0,
+        extra_system_parts: Optional[List[str]] = None,
     ) -> str:
         try:
             prompt, messages = self._build_prompt_and_messages(
-                question, chat_history, mode_addendum=GENERAL_CHAT_ADDENDUM,
+                question, chat_history,
+                extra_system_parts=extra_system_parts,
+                mode_addendum=GENERAL_CHAT_ADDENDUM,
             )
             t0 = time.perf_counter()
             result = self._invoke_llm(prompt, messages, question, key_start_index=key_start_index)
@@ -244,10 +247,13 @@ class GroqService:
         question: str,
         chat_history: Optional[List[tuple]] = None,
         key_start_index: int = 0,
+        extra_system_parts: Optional[List[str]] = None,
     ) -> Iterator[str]:
         try:
             prompt, messages = self._build_prompt_and_messages(
-                question, chat_history, mode_addendum=GENERAL_CHAT_ADDENDUM,
+                question, chat_history,
+                extra_system_parts=extra_system_parts,
+                mode_addendum=GENERAL_CHAT_ADDENDUM,
             )
             yield {"_activity": {"event": "context_retrieved", "message": "Retrieved relevant context from knowledge base"}}
             yield from self._stream_llm(prompt, messages, question, key_start_index=key_start_index)

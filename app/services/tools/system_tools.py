@@ -102,79 +102,478 @@ def _is_on_path(cmd: str) -> bool:
     return found
 
 
+# ── App Alias Map ─────────────────────────────────────────────────────
+# Natural language translation layer: maps what users SAY to canonical app names.
+# The inventory knows WHAT is installed; APP_ALIASES knows HOW humans refer to apps.
+APP_ALIASES = {
+    # Browsers
+    "chrome": "Google Chrome",
+    "google": "Google Chrome",
+    "browser": "Google Chrome",
+    "firefox": "Firefox",
+    "edge": "Microsoft Edge",
+    "microsoft edge": "Microsoft Edge",
+    "brave": "Brave",
+    "opera": "Opera",
+    # Office
+    "word": "Microsoft Word",
+    "microsoft word": "Microsoft Word",
+    "excel": "Microsoft Excel",
+    "microsoft excel": "Microsoft Excel",
+    "powerpoint": "Microsoft PowerPoint",
+    "microsoft powerpoint": "Microsoft PowerPoint",
+    "outlook": "Microsoft Outlook",
+    # Dev tools
+    "code": "Visual Studio Code",
+    "vscode": "Visual Studio Code",
+    "vs code": "Visual Studio Code",
+    "visual studio code": "Visual Studio Code",
+    # System
+    "terminal": "Windows Terminal",
+    "windows terminal": "Windows Terminal",
+    "cmd": "Command Prompt",
+    "command prompt": "Command Prompt",
+    "calc": "Calculator",
+    "calculator": "Calculator",
+    "paint": "Microsoft Paint",
+    "mspaint": "Microsoft Paint",
+    "notepad": "Notepad",
+    "task manager": "Task Manager",
+    "file explorer": "File Explorer",
+    "explorer": "File Explorer",
+    "settings": "Settings",
+    "control panel": "Control Panel",
+    "powershell": "PowerShell",
+    # Special protocol handlers (not in inventory)
+    "ms-settings": "ms-settings:",
+    "ms-settings:": "ms-settings:",
+}
+
+
+# ── App Inventory System ──────────────────────────────────────────────
+# Scans Windows Registry + Start Menu to build a comprehensive list of
+# installed applications. Shared by open_app() and close_app() so JARVIS
+# always knows what's installed — no hardcoded maps needed.
+_app_inventory = None           # {key: {display_name, exe, path, publisher, version, source}}
+_app_inventory_time = 0
+_INVENTORY_TTL = 600            # 10 minutes
+
+
+def _build_app_inventory() -> dict:
+    """
+    Build a comprehensive inventory of installed applications.
+    Sources: Windows Registry (HKLM + HKCU) + Start Menu shortcuts.
+    Returns {lowercase_key: {display_name, exe, path, publisher, version, source}}.
+    """
+    inventory = {}
+
+    # --- Source 1 & 2: Windows Registry (HKLM + HKCU) ---
+    try:
+        import winreg
+    except ImportError:
+        winreg = None
+
+    if winreg:
+        reg_roots = [
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", "registry_hklm"),
+            (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", "registry_hkcu"),
+        ]
+        # Also check WOW6432Node for 32-bit apps on 64-bit Windows
+        if platform.machine().endswith("64"):
+            reg_roots.append(
+                (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall", "registry_wow64")
+            )
+
+        for hive, subkey_path, source_label in reg_roots:
+            try:
+                hive_handle = winreg.OpenKey(hive, subkey_path)
+                i = 0
+                while True:
+                    try:
+                        key_name = winreg.EnumKey(hive_handle, i)
+                        i += 1
+                        try:
+                            app_key = winreg.OpenKey(hive_handle, key_name)
+                            display_name = ""
+                            install_location = ""
+                            display_icon = ""
+                            publisher = ""
+                            version = ""
+                            for val_name, val_data in [
+                                ("DisplayName", "display_name"),
+                                ("InstallLocation", "install_location"),
+                                ("DisplayIcon", "display_icon"),
+                                ("Publisher", "publisher"),
+                                ("DisplayVersion", "version"),
+                            ]:
+                                try:
+                                    val, _ = winreg.QueryValueEx(app_key, val_name)
+                                    if val_name == "DisplayName":
+                                        display_name = str(val).strip()
+                                    elif val_name == "InstallLocation":
+                                        install_location = str(val).strip()
+                                    elif val_name == "DisplayIcon":
+                                        display_icon = str(val).strip()
+                                    elif val_name == "Publisher":
+                                        publisher = str(val).strip()
+                                    elif val_name == "DisplayVersion":
+                                        version = str(val).strip()
+                                except (FileNotFoundError, OSError):
+                                    pass
+                            winreg.CloseKey(app_key)
+
+                            if not display_name:
+                                continue
+
+                            # Skip system updates, patches, redistributables noise
+                            skip_keywords = ["update for", "hotfix for", "security update",
+                                             "kb\\d+", "redistributable", "service pack"]
+                            skip = False
+                            dn_lower = display_name.lower()
+                            for kw in skip_keywords:
+                                if re.search(kw, dn_lower):
+                                    skip = True
+                                    break
+                            if skip:
+                                continue
+
+                            # Derive_exe name from install location or DisplayIcon
+                            # System exes that are NOT the actual application
+                            _SYSTEM_EXES = {"msiexec.exe", "rundll32.exe", "msexec.exe"}
+                            exe_name = ""
+                            full_path = ""
+                            
+                            # Try InstallLocation first
+                            if install_location and os.path.isdir(install_location):
+                                try:
+                                    for f in os.listdir(install_location):
+                                        fl = f.lower()
+                                        if fl.endswith(".exe") and not fl.startswith("unins") and fl not in _SYSTEM_EXES:
+                                            exe_name = f
+                                            full_path = os.path.join(install_location, f)
+                                            break
+                                except (PermissionError, OSError):
+                                    pass
+                            
+                            # Fallback: DisplayIcon (usually "C:\path\to\app.exe,0")
+                            if not exe_name and display_icon:
+                                icon_path = display_icon.split(",")[0].strip().strip('"')
+                                if icon_path and os.path.isfile(icon_path):
+                                    icon_exe = os.path.basename(icon_path)
+                                    if icon_exe.lower() not in _SYSTEM_EXES:
+                                        exe_name = icon_exe
+                                        full_path = icon_path
+                            
+                            # Fallback: UninstallString (skip MsiExec-based uninstallers)
+                            if not exe_name:
+                                try:
+                                    uninstall_str, _ = winreg.QueryValueEx(
+                                        winreg.OpenKey(hive_handle, key_name), "UninstallString"
+                                    )
+                                    uninstall_str = str(uninstall_str).strip()
+                                    if uninstall_str and ".exe" in uninstall_str.lower():
+                                        # Skip MsiExec uninstallers (Windows Installer)
+                                        if not uninstall_str.lower().startswith("msiexec"):
+                                            exe_match = re.search(r'"?([^"\\]+\.exe)"?', uninstall_str, re.IGNORECASE)
+                                            if exe_match:
+                                                candidate = exe_match.group(1)
+                                                if candidate.lower() not in _SYSTEM_EXES:
+                                                    exe_name = candidate
+                                except (FileNotFoundError, OSError):
+                                    pass
+
+                            # Build the inventory key from display name
+                            inv_key = display_name.lower().strip()
+
+                            # Avoid overwriting a better entry:
+                            # - registry with real exe > registry with bad exe > start_menu
+                            _should_overwrite = False
+                            if inv_key not in inventory:
+                                _should_overwrite = True
+                            else:
+                                existing = inventory[inv_key]
+                                # Existing is start_menu with valid path -> keep it
+                                # New has real exe but existing is start_menu -> overwrite
+                                # New has only bad exe and existing is start_menu with path -> keep existing
+                                if existing["source"] == "start_menu" and existing.get("path"):
+                                    # Only overwrite if new entry has a real exe
+                                    if exe_name and exe_name.lower() not in _SYSTEM_EXES:
+                                        _should_overwrite = True
+                                elif existing["source"].startswith("registry") and not existing.get("path"):
+                                    # Existing registry entry has no path, new one might be better
+                                    if exe_name and exe_name.lower() not in _SYSTEM_EXES:
+                                        _should_overwrite = True
+                                elif existing["source"].startswith("registry") and existing.get("path"):
+                                    pass  # Keep existing registry entry with valid path
+                                else:
+                                    _should_overwrite = True
+
+                            if _should_overwrite:
+                                inventory[inv_key] = {
+                                    "display_name": display_name,
+                                    "exe": exe_name,
+                                    "path": full_path,
+                                    "publisher": publisher,
+                                    "version": version,
+                                    "source": source_label,
+                                }
+                        except (FileNotFoundError, OSError):
+                            pass
+                    except OSError:
+                        break
+                winreg.CloseKey(hive_handle)
+            except (FileNotFoundError, OSError):
+                continue
+
+    # --- Source 3: Start Menu shortcuts ---
+    try:
+        shortcuts = _scan_start_menu_shortcuts()
+        for name, lnk_path in shortcuts.items():
+            inv_key = name.lower().strip()
+            existing = inventory.get(inv_key)
+            # Skip if existing entry already has a valid path
+            if existing and existing.get("path"):
+                continue
+
+            # Try to resolve the shortcut target
+            target_path = ""
+            target_exe = ""
+            try:
+                ps_resolve = f"""
+$s = (New-Object -COM WScript.Shell).CreateShortcut('{lnk_path}')
+Write-Output $s.TargetPath
+"""
+                result = subprocess.run(
+                    ["powershell", "-Command", ps_resolve],
+                    capture_output=True, text=True, timeout=3
+                )
+                target_path = result.stdout.strip()
+                if target_path and os.path.isfile(target_path):
+                    target_exe = os.path.basename(target_path)
+            except Exception:
+                pass
+
+            inventory[inv_key] = {
+                "display_name": name.title(),
+                "exe": target_exe,
+                "path": target_path,
+                "publisher": "",
+                "version": "",
+                "source": "start_menu",
+            }
+    except Exception as e:
+        logger.warning("[INVENTORY] Start Menu scan failed: %s", e)
+
+    logger.info("[INVENTORY] Built app inventory: %d apps indexed", len(inventory))
+    return inventory
+
+
+def _get_inventory() -> dict:
+    """Return the app inventory, rebuilding if stale (>10 min)."""
+    global _app_inventory, _app_inventory_time
+    if _app_inventory is not None and (time.time() - _app_inventory_time) < _INVENTORY_TTL:
+        return _app_inventory
+    try:
+        _app_inventory = _build_app_inventory()
+        _app_inventory_time = time.time()
+    except Exception as e:
+        logger.error("[INVENTORY] Build failed: %s", e)
+        _app_inventory = _app_inventory or {}
+        _app_inventory_time = time.time()
+    return _app_inventory
+
+
+def _lookup_app(name: str) -> tuple:
+    """
+    Fuzzy-match a name against the app inventory.
+    Returns (display_name, exe_name, full_path) or (None, None, None).
+    """
+    inventory = _get_inventory()
+    if not inventory:
+        return (None, None, None)
+
+    name_lower = name.strip().lower()
+
+    # 1. Exact match on inventory key
+    if name_lower in inventory:
+        entry = inventory[name_lower]
+        return (entry["display_name"], entry["exe"], entry["path"])
+
+    # 2. Substring match: name in key or key in name
+    for key, entry in inventory.items():
+        if name_lower in key or key in name_lower:
+            return (entry["display_name"], entry["exe"], entry["path"])
+
+    # 3. Match against exe name (without .exe)
+    for key, entry in inventory.items():
+        exe_stem = entry.get("exe", "").lower().replace(".exe", "")
+        if exe_stem and (name_lower == exe_stem or name_lower in exe_stem or exe_stem in name_lower):
+            return (entry["display_name"], entry["exe"], entry["path"])
+
+    return (None, None, None)
+
+
+class AppResolver:
+    """
+    Centralized app resolution service.
+
+    Resolution order:
+    1. APP_ALIASES → canonical name
+    2. Inventory → exe, path
+    3. Protocol handlers (ms-settings:, control, explorer)
+    4. PATH lookup
+    5. Start Menu scan
+
+    Returns: {display_name, exe, path, source}
+    """
+
+    # Special system commands that work via os.startfile()
+    _SYSTEM_COMMANDS = {"control", "explorer", "ms-settings:"}
+
+    @staticmethod
+    def resolve(name: str) -> dict:
+        """
+        Resolve user input to app info.
+        Returns dict with: display_name, exe, path, source
+        """
+        raw = name.strip()
+        lower = raw.lower()
+
+        # Step 1: Check aliases (natural language → canonical name)
+        canonical = APP_ALIASES.get(lower, raw)
+
+        # Step 2: Check inventory (canonical name → exe, path)
+        inv_name, inv_exe, inv_path = _lookup_app(canonical)
+        if inv_name and inv_path:
+            return {
+                "display_name": inv_name,
+                "exe": inv_exe,
+                "path": inv_path,
+                "source": "inventory",
+            }
+
+        # Step 3: Check if it's a special protocol handler
+        if canonical.startswith("ms-") or canonical in AppResolver._SYSTEM_COMMANDS:
+            return {
+                "display_name": canonical,
+                "exe": canonical,
+                "path": canonical,  # For os.startfile()
+                "source": "protocol",
+            }
+
+        # Step 4: PATH lookup
+        if re.match(r'^[a-z0-9\s.\-+]+$', lower) and _is_on_path(lower):
+            return {
+                "display_name": raw,
+                "exe": lower,
+                "path": lower,
+                "source": "path",
+            }
+
+        # Step 5: Start Menu fuzzy match
+        shortcut_path = _fuzzy_find_shortcut(lower)
+        if shortcut_path:
+            shortcut_name = os.path.basename(shortcut_path)[:-4]
+            return {
+                "display_name": shortcut_name,
+                "exe": "",
+                "path": shortcut_path,
+                "source": "start_menu",
+            }
+
+        # Not found
+        return {
+            "display_name": raw,
+            "exe": None,
+            "path": None,
+            "source": None,
+        }
+
+    @staticmethod
+    def is_browser(exe: str) -> bool:
+        """Check if exe is a browser process."""
+        if not exe:
+            return False
+        BROWSER_PROCESSES = {"chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"}
+        return exe.lower() in BROWSER_PROCESSES
+
+
 def open_app(app_name: str) -> str:
-    """Open an application by name — local first, web fallback."""
+    """Open an application by name — uses AppResolver, with web fallback."""
     raw_name = app_name.strip()
     app_lower = raw_name.lower()
 
-    # Step 1: Fast hardcoded map for common apps
-    APP_MAP = {
-        "chrome": "chrome",
-        "google chrome": "chrome",
-        "firefox": "firefox",
-        "brave": "brave",
-        "edge": "msedge",
-        "microsoft edge": "msedge",
-        "notepad": "notepad",
-        "calculator": "calc",
-        "calc": "calc",
-        "paint": "mspaint",
-        "cmd": "cmd",
-        "command prompt": "cmd",
-        "terminal": "wt",
-        "windows terminal": "wt",
-        "powershell": "powershell",
-        "task manager": "taskmgr",
-        "file explorer": "explorer",
-        "explorer": "explorer",
-        "settings": "ms-settings:",
-        "control panel": "control",
-        "word": "winword",
-        "microsoft word": "winword",
-        "excel": "excel",
-        "microsoft excel": "excel",
-        "powerpoint": "powerpnt",
-        "outlook": "outlook",
-        "vs code": "code",
-        "vscode": "code",
-        "visual studio code": "code",
+    # Resolve the app via AppResolver (aliases → inventory → PATH → Start Menu)
+    resolved = AppResolver.resolve(raw_name)
+
+    if resolved["path"]:
+        try:
+            path = resolved["path"]
+            if path.startswith("ms-") or path.endswith(":"):
+                os.startfile(path)
+            else:
+                subprocess.Popen(path, shell=True,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            logger.info("[TOOL] Opened app (%s): %s -> %s",
+                       resolved["source"], raw_name, resolved["display_name"])
+            return f"Opened {resolved['display_name']}."
+        except Exception as e:
+            logger.warning("[TOOL] Launch failed for %s: %s", raw_name, e)
+
+    # Fallback: Windows Store / UWP apps via protocol handlers
+    # These apps register URI protocols (e.g. instagram://, whatsapp://)
+    # that os.startfile() can launch directly.
+    PROTOCOL_MAP = {
+        "instagram": "instagram://",
+        "whatsapp": "whatsapp://",
+        "spotify": "spotify://",
+        "telegram": "tg://",
+        "discord": "discord://",
+        "slack": "slack://",
+        "netflix": "netflix://",
+        "twitter": "twitter://",
+        "x": "twitter://",
+        "tiktok": "tiktok://",
+        "pinterest": "pinterest://",
+        "amazon": "amazon://",
+        "prime video": "primevideo://",
+        "uber": "uber://",
+        "zoom": "zoommtg://",
+        "teams": "msteams://",
+        "skype": "skype://",
+        "signal": "sgnl://",
+        "vlc": "vlc://",
+        "obs": "obs://",
     }
 
-    if app_lower in APP_MAP:
-        cmd = APP_MAP[app_lower]
+    if app_lower in PROTOCOL_MAP:
+        protocol_uri = PROTOCOL_MAP[app_lower]
         try:
-            if cmd.startswith("ms-"):
-                os.startfile(cmd)
-            else:
-                subprocess.Popen(cmd, shell=True,
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            logger.info("[TOOL] Opened app (fast map): %s -> %s", raw_name, cmd)
+            os.startfile(protocol_uri)
+            logger.info("[TOOL] Opened app (protocol handler): %s -> %s", raw_name, protocol_uri)
             return f"Opened {raw_name}."
         except Exception as e:
-            logger.warning("[TOOL] Fast map failed for %s: %s, trying PATH", raw_name, e)
+            logger.info("[TOOL] Protocol handler not registered for %s: %s", raw_name, e)
+            # Protocol not registered — app likely not installed, continue to next step
 
-    # Step 2: Check if command is on PATH (faster than Start Menu scan)
-    if re.match(r'^[a-z0-9\s.\-+]+$', app_lower) and _is_on_path(app_lower):
-        try:
-            subprocess.Popen(app_lower, shell=True,
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            logger.info("[TOOL] Opened app (PATH): %s", raw_name)
-            return f"Opened {raw_name}."
-        except Exception as e:
-            logger.warning("[TOOL] PATH launch failed for %s: %s", raw_name, e)
+    # Fallback: Check connected devices (Android, ESP32) for the app
+    try:
+        from app.services.device_manager import device_manager
+        # Search all online devices for one that has this app installed
+        online_devices = device_manager.get_online_devices()
+        for device in online_devices:
+            device_apps = [a.lower() for a in device.metadata.get("installed_apps", [])]
+            if app_lower in device_apps:
+                # Found on a connected device — route remotely
+                logger.info("[TOOL] App %s found on device %s (%s)",
+                            raw_name, device.device_id, device.device_type)
+                # For now, log the routing. Full WebSocket execution comes with real hardware.
+                return (f"{raw_name} is not installed on this PC, but found on your "
+                        f"{device.device_type} device. Connect the device to open it remotely.")
+    except Exception as e:
+        logger.debug("[TOOL] Device routing check failed: %s", e)
 
-    # Step 3: Scan Start Menu shortcuts (fuzzy match)
-    shortcut_path = _fuzzy_find_shortcut(app_lower)
-    if shortcut_path:
-        try:
-            os.startfile(shortcut_path)
-            shortcut_name = os.path.basename(shortcut_path)[:-4]  # Strip .lnk
-            logger.info("[TOOL] Opened app (Start Menu): %s -> %s", raw_name, shortcut_path)
-            return f"Opened {shortcut_name}."
-        except Exception as e:
-            logger.warning("[TOOL] Start Menu launch failed for %s: %s", raw_name, e)
-
-    # Step 4: Web fallback — Direct app URLs (not search results)
+    # Fallback: Web URLs — Direct app URLs (not search results)
     WEB_MAP = {
         "youtube": "https://www.youtube.com",
         "spotify": "https://open.spotify.com",
@@ -205,7 +604,6 @@ def open_app(app_name: str) -> str:
         "flipkart": "https://www.flipkart.com",
     }
 
-    import urllib.parse
     if app_lower in WEB_MAP:
         web_url = WEB_MAP[app_lower]
     else:
@@ -246,99 +644,196 @@ def list_installed_apps() -> str:
 
 
 def close_app(app_name: str) -> str:
-    """Close an application or browser tab by name on Windows."""
-    app_name = app_name.strip().lower()
-    safe_name = re.sub(r'[^\w\s\-.]', '', app_name)
+    """Close an application or browser tab by name on Windows.
+
+    Uses AppResolver for app resolution. 3-track logic:
+      Track A — Browser process (chrome, edge, firefox, brave):
+                 Kill the entire browser via taskkill.
+      Track B — Resolved from inventory/aliases/PATH/Start Menu:
+                 CloseMainWindow by actual exe name → taskkill fallback.
+      Track C — Unknown name → best-effort browser tab search
+                 using Win32 HWND activation + Ctrl+Tab cycling.
+    """
+    raw_name = app_name.strip()
+    safe_name = re.sub(r'[^\w\s\-.]', '', raw_name.lower())
     if not safe_name:
         return "Invalid application name."
 
-    BROWSER_PROCESSES = {"chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"}
+    # Resolve the app via AppResolver
+    resolved = AppResolver.resolve(safe_name)
+    process_name = resolved.get("exe") or f"{safe_name}.exe"
+    display_name = resolved["display_name"]
+    is_browser = AppResolver.is_browser(process_name)
+    is_known_desktop = resolved["source"] in ("inventory", "path", "start_menu") or resolved.get("exe")
 
-    PROCESS_MAP = {
-        "chrome": "chrome.exe",
-        "google chrome": "chrome.exe",
-        "firefox": "firefox.exe",
-        "brave": "brave.exe",
-        "edge": "msedge.exe",
-        "microsoft edge": "msedge.exe",
-        "notepad": "notepad.exe",
-        "calculator": "Calculator.exe",
-        "paint": "mspaint.exe",
-        "word": "WINWORD.EXE",
-        "excel": "EXCEL.EXE",
-        "powerpoint": "POWERPNT.EXE",
-        "outlook": "OUTLOOK.EXE",
-        "vs code": "Code.exe",
-        "vscode": "Code.exe",
-        "spotify": "Spotify.exe",
-        "discord": "Discord.exe",
-        "vlc": "vlc.exe",
-        "teams": "Teams.exe",
-    }
+    # ═══════════════════════════════════════════════════════════════
+    # TRACK A: Browser process → kill the entire browser
+    # "close chrome" / "close edge" / "close firefox"
+    # ═══════════════════════════════════════════════════════════════
+    if is_browser:
+        try:
+            result = subprocess.run(
+                ["taskkill", "/F", "/IM", process_name],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                logger.info("[TOOL] Killed browser process: %s (%s)", display_name, process_name)
+                return f"Closed {display_name}."
+            else:
+                return f"{display_name} is not running."
+        except Exception as e:
+            logger.error("[TOOL] Failed to kill browser %s: %s", display_name, e)
+            return f"Could not close {display_name}: {e}"
 
-    process_name = PROCESS_MAP.get(safe_name, f"{safe_name}.exe")
-    is_browser = process_name in BROWSER_PROCESSES
-
-    # Single robust PowerShell script: find window, close tab (browser) or window (non-browser)
-    try:
-        if is_browser:
-            # For browsers: activate the window, wait for focus, then Ctrl+W to close the tab
+    # ═══════════════════════════════════════════════════════════════
+    # TRACK B: Known desktop app → graceful close + force fallback
+    # Uses AppResolver for exe name and display name.
+    # ═══════════════════════════════════════════════════════════════
+    if is_known_desktop:
+        closed = False
+        try:
             ps_script = f"""
-Add-Type -AssemblyName System.Windows.Forms
-$titles = '*{safe_name}*'
-$proc = Get-Process | Where-Object {{ $_.MainWindowTitle -like $titles }} | Select-Object -First 1
-if ($proc) {{
-    $wshell = New-Object -ComObject WScript.Shell
-    $activated = $wshell.AppActivate($proc.Id)
-    Start-Sleep -Milliseconds 500
-    [System.Windows.Forms.SendKeys]::SendWait('^w')
-    Write-Output "TAB_CLOSED"
-}} else {{
-    Write-Output "NOT_FOUND"
-}}
-"""
-        else:
-            # Non-browser: close the window gracefully via CloseMainWindow()
-            ps_script = f"""
-$titles = '*{safe_name}*'
-$procs = Get-Process | Where-Object {{ $_.MainWindowTitle -like $titles }}
+$procs = Get-Process -Name '{process_name}' -ErrorAction SilentlyContinue
 if ($procs) {{
-    $procs | ForEach-Object {{ $_.CloseMainWindow() | Out-Null }}
-    Write-Output "CLOSED"
+    $closed = $false
+    $procs | ForEach-Object {{
+        $result = $_.CloseMainWindow()
+        if ($result) {{ $closed = $true }}
+    }}
+    if ($closed) {{
+        Write-Output "CLOSED"
+    }} else {{
+        Write-Output "NOT_CLOSED"
+    }}
 }} else {{
     Write-Output "NOT_FOUND"
 }}
 """
-        result = subprocess.run(
-            ["powershell", "-Command", ps_script],
-            capture_output=True, text=True, timeout=5
-        )
-        stdout = result.stdout
-        if "TAB_CLOSED" in stdout or "CLOSED" in stdout:
-            logger.info("[TOOL] Closed %s: %s", "tab" if is_browser else "window", safe_name)
-            return f"Closed {safe_name}."
-        elif "NOT_FOUND" in stdout:
-            # Window not found by title, try process kill as fallback
-            pass
-        else:
-            logger.warning("[TOOL] PowerShell output: %s", stdout[:200])
-    except Exception as e:
-        logger.warning("[TOOL] Window close failed for %s: %s", safe_name, e)
+            result = subprocess.run(
+                ["powershell", "-Command", ps_script],
+                capture_output=True, text=True, timeout=5
+            )
+            stdout = result.stdout.strip()
+            if "CLOSED" in stdout:
+                logger.info("[TOOL] Closed desktop app: %s (%s)", display_name, process_name)
+                return f"Closed {display_name}."
+            elif "NOT_FOUND" in stdout:
+                return f"{display_name} is not running."
+        except Exception as e:
+            logger.warning("[TOOL] Graceful close failed for %s: %s", display_name, e)
 
-    # Fallback: kill the process
+        # Force kill fallback
+        try:
+            result = subprocess.run(
+                ["taskkill", "/F", "/IM", process_name],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                logger.info("[TOOL] Force-killed: %s (%s)", display_name, process_name)
+                return f"Closed {display_name}."
+            else:
+                return f"Could not close {display_name}."
+        except Exception as e:
+            logger.error("[TOOL] Force kill failed for %s: %s", display_name, e)
+            return f"Could not close {display_name}: {e}"
+
+    # ═══════════════════════════════════════════════════════════════
+    # TRACK C: Unknown name → best-effort browser tab search
+    # Uses Win32 SetForegroundWindow for reliable focus.
+    # "close linkedin" / "close youtube" / "close github"
+    # ═══════════════════════════════════════════════════════════════
     try:
+        ps_find_tab = f"""
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class Win32Focus {{
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hWnd);
+}}
+"@
+$target = '{safe_name}'
+$browserNames = @('chrome', 'msedge', 'firefox', 'brave', 'opera')
+$found = $false
+
+# Pass 1: Check active tab title in every browser window (Win32 HWND activation)
+foreach ($bname in $browserNames) {{
+    $bprocs = Get-Process -Name $bname -ErrorAction SilentlyContinue | Where-Object {{ $_.MainWindowHandle -ne 0 }}
+    foreach ($bp in $bprocs) {{
+        $hwnd = $bp.MainWindowHandle
+        [void][Win32Focus]::SetForegroundWindow($hwnd)
+        [void][Win32Focus]::SetFocus($hwnd)
+        Start-Sleep -Milliseconds 400
+        $title = (Get-Process -Id $bp.Id).MainWindowTitle
+        if ($title -like "*$target*") {{
+            [void][Win32Focus]::SetForegroundWindow($hwnd)
+            Start-Sleep -Milliseconds 100
+            $wshell = New-Object -ComObject WScript.Shell
+            $wshell.SendKeys('^w')
+            Start-Sleep -Milliseconds 200
+            Write-Output "TAB_CLOSED"
+            $found = $true
+            break
+        }}
+    }}
+    if ($found) {{ break }}
+}}
+
+# Pass 2: Not in active title — cycle through tabs with Ctrl+Tab
+if (-not $found) {{
+    foreach ($bname in $browserNames) {{
+        $bprocs = Get-Process -Name $bname -ErrorAction SilentlyContinue | Where-Object {{ $_.MainWindowHandle -ne 0 }} | Select-Object -First 1
+        if ($bprocs) {{
+            $hwnd = $bprocs.MainWindowHandle
+            [void][Win32Focus]::SetForegroundWindow($hwnd)
+            [void][Win32Focus]::SetFocus($hwnd)
+            Start-Sleep -Milliseconds 500
+            $originalTitle = (Get-Process -Id $bprocs.Id).MainWindowTitle
+            $maxTabs = 30
+            $tabCount = 0
+            $foundCycle = $false
+
+            while ($tabCount -lt $maxTabs) {{
+                $wshell = New-Object -ComObject WScript.Shell
+                $wshell.SendKeys('^{{TAB}}')
+                Start-Sleep -Milliseconds 500
+                $tabCount++
+                $currentTitle = (Get-Process -Id $bprocs.Id).MainWindowTitle
+                if ($currentTitle -like "*$target*") {{
+                    [void][Win32Focus]::SetForegroundWindow($hwnd)
+                    Start-Sleep -Milliseconds 100
+                    $wshell.SendKeys('^w')
+                    Start-Sleep -Milliseconds 200
+                    Write-Output "TAB_CLOSED"
+                    $foundCycle = $true
+                    break
+                }}
+                if ($currentTitle -eq $originalTitle -and $tabCount -gt 1) {{ break }}
+            }}
+            if ($foundCycle) {{ $found = $true; break }}
+        }}
+    }}
+}}
+
+if (-not $found) {{
+    Write-Output "NOT_FOUND"
+}}
+"""
         result = subprocess.run(
-            ["taskkill", "/F", "/IM", process_name],
-            capture_output=True, text=True, timeout=5,
+            ["powershell", "-Command", ps_find_tab],
+            capture_output=True, text=True, timeout=25
         )
-        if result.returncode == 0:
-            logger.info("[TOOL] Killed process: %s (%s)", safe_name, process_name)
+        stdout = result.stdout.strip()
+        if "TAB_CLOSED" in stdout:
+            logger.info("[TOOL] Closed browser tab: %s", safe_name)
             return f"Closed {safe_name}."
         else:
-            return f"Could not find or close {safe_name}."
+            logger.info("[TOOL] Tab '%s' not found in any browser", safe_name)
+            return f"Could not find {safe_name} in any browser tab."
     except Exception as e:
-        logger.error("[TOOL] Failed to close app %s: %s", safe_name, e)
-        return f"Could not close {safe_name}: {e}"
+        logger.warning("[TOOL] Browser tab search failed for %s: %s", safe_name, e)
+        return f"Could not find {safe_name}: {e}"
 
 
 def open_url(url: str) -> str:
@@ -1214,7 +1709,6 @@ def list_desktop() -> str:
                     except PermissionError:
                         folders.append(f"  {item}/ (access denied)")
                 else:
-                    folders_str = None  # just for files below
                     files.append(f"  {item} ({_format_bytes(stat.st_size)})")
             except OSError:
                 files.append(f"  {item} (size unknown)")
@@ -1346,7 +1840,7 @@ def create_folder(folder_name: str) -> str:
     filepath = os.path.join(desktop, safe_name)
 
     if not _is_safe_desktop_path(filepath):
-        return f"For safety, I can only create folders on the Desktop."
+        return "For safety, I can only create folders on the Desktop."
 
     if os.path.exists(filepath):
         return f"Folder '{safe_name}' already exists on the Desktop."
@@ -1403,7 +1897,6 @@ def delete_item(item_name: str) -> str:
             capture_output=True, text=True, timeout=10
         )
         if result.returncode == 0:
-            item_type = "folder" if os.path.isdir(filepath) else "file"
             logger.info("[TOOL] Deleted (to Recycle Bin): %s", item_name)
             return f"Moved '{item_name}' to Recycle Bin."
         else:
@@ -1582,7 +2075,7 @@ def exit_jarvis() -> str:
             f.write("shutdown")
         logger.info("[TOOL] JARVIS shutdown triggered")
         return "Goodbye, sir."
-    except Exception as e:
+    except Exception:
         # Fallback: just write the flag file
         try:
             with open(_SHUTDOWN_FLAG, "w") as f:
@@ -1640,10 +2133,11 @@ def press_keys(key_combo: str) -> str:
 
 
 def browser_control(action: str) -> str:
-    """Control browser tabs: new_tab, close_tab, next_tab, prev_tab, refresh, fullscreen."""
+    """Control browser tabs and windows: new_tab, new_window, close_tab, next_tab, prev_tab, refresh, fullscreen."""
     action = action.strip().lower()
     ACTION_MAP = {
-        "new_tab": ("^t", "New tab."),
+        "new_tab": ("^t", "New tab opened."),
+        "new_window": ("^n", "New window opened."),
         "close_tab": ("^w", "Tab closed."),
         "next_tab": ("^{TAB}", "Next tab."),
         "prev_tab": ("^+{TAB}", "Previous tab."),
@@ -1660,6 +2154,32 @@ def browser_control(action: str) -> str:
         return response
     except Exception as e:
         return f"Browser control failed: {e}"
+
+
+def open_new_window(browser: str = "chrome") -> str:
+    """Open a new window in the specified browser. Works even if the browser is already running."""
+    raw = browser.strip().lower()
+    BROWSER_CMD = {
+        "chrome": "chrome",
+        "google chrome": "chrome",
+        "edge": "msedge",
+        "microsoft edge": "msedge",
+        "firefox": "firefox",
+        "brave": "brave",
+        "opera": "opera",
+    }
+    cmd = BROWSER_CMD.get(raw, "chrome")
+    try:
+        subprocess.Popen(
+            [cmd, "--new-window"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            shell=True,
+        )
+        logger.info("[TOOL] Opened new %s window", raw)
+        display = "Chrome" if cmd == "chrome" else raw.title()
+        return f"Opened new {display} window."
+    except Exception as e:
+        return f"Could not open new window: {e}"
 
 
 def network_speed() -> str:
@@ -1733,7 +2253,7 @@ def pc_health() -> str:
 SYSTEM_TOOLS = {
     "open_app": {
         "func": open_app,
-        "description": "Open a PROGRAM/APPLICATION (e.g. Chrome, Notepad, Spotify). NOT for opening files/documents — use open_file for that",
+        "description": "Open a PROGRAM/APPLICATION (e.g. Chrome, Notepad, Spotify). Uses AppResolver: alias map for natural language, inventory for installed apps, PATH, Start Menu. Automatically supports newly installed apps. NOT for opening files/documents — use open_file for that",
         "params": ["app_name"],
     },
     "switch_window": {
@@ -1743,7 +2263,7 @@ SYSTEM_TOOLS = {
     },
     "close_app": {
         "func": close_app,
-        "description": "Close a running application or specific window",
+        "description": "Close a running application or browser tab. Uses AppResolver: alias map for natural language, inventory for installed apps. Saying 'close Chrome' kills the browser; saying 'close LinkedIn' closes the tab. Automatically supports any installed app.",
         "params": ["app_name"],
     },
     "open_url": {
@@ -1788,7 +2308,7 @@ SYSTEM_TOOLS = {
     },
     "list_installed_apps": {
         "func": list_installed_apps,
-        "description": "List all locally installed applications on this PC",
+        "description": "List all installed applications on this PC (from app inventory: registry + Start Menu).",
         "params": [],
     },
     "play_youtube": {
@@ -1913,8 +2433,13 @@ SYSTEM_TOOLS = {
     },
     "browser_control": {
         "func": browser_control,
-        "description": "Control browser tabs. Actions: new_tab, close_tab, next_tab, prev_tab, refresh, fullscreen.",
+        "description": "Control browser tabs and windows. Actions: new_tab, new_window, close_tab, next_tab, prev_tab, refresh, fullscreen.",
         "params": ["action"],
+    },
+    "open_new_window": {
+        "func": open_new_window,
+        "description": "Open a new browser window (Chrome, Edge, Firefox). Use when user says 'new window', 'open new Chrome window', or 'incognito'.",
+        "params": ["browser"],
     },
     "network_speed": {
         "func": network_speed,

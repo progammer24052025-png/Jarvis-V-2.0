@@ -779,6 +779,47 @@ textarea { font-family: var(--font); color: var(--text); }
     to   { opacity: 1; transform: translateX(0); }
 }
 
+/* ── Status Pill (processing state indicator) ────────────────────────── */
+#status-pill {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    margin: 0 auto 8px auto;
+    padding: 6px 16px;
+    background: rgba(0, 180, 255, 0.08);
+    border: 1px solid rgba(0, 180, 255, 0.2);
+    border-radius: 20px;
+    color: #00b4ff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    transition: opacity 0.2s ease;
+    max-width: fit-content;
+    backdrop-filter: blur(8px);
+    pointer-events: none;
+    display: none;
+    opacity: 0;
+}
+#status-pill.visible {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 1;
+}
+#status-pill .pill-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #00b4ff;
+    animation: pillPulse 1.2s ease-in-out infinite;
+}
+@keyframes pillPulse {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50%       { opacity: 1;   transform: scale(1.2); }
+}
+
 .search-results-widget {
     position: fixed;
     top: calc(var(--header-h) + var(--panel-gap));
@@ -913,7 +954,7 @@ textarea { font-family: var(--font); color: var(--text); }
     overflow-wrap: break-word;
     word-break: break-word;
     display: -webkit-box;
-    -webkit-line-clamp: 4;
+    line-clamp: 4;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
@@ -1206,7 +1247,7 @@ textarea { font-family: var(--font); color: var(--text); }
     .search-results-list { padding: 12px 14px 18px; gap: 10px; }
     .search-result-card { padding: 12px 14px; }
     .search-result-card .card-title { font-size: 0.76rem; }
-    .search-result-card .card-content { font-size: 0.72rem; -webkit-line-clamp: 3; }
+    .search-result-card .card-content { font-size: 0.72rem; line-clamp: 3; }
     .activity-panel { width: 100vw; }
     .activity-header { padding: 12px 14px; }
     .activity-list { padding: 12px 14px 18px; gap: 10px; }
